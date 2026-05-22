@@ -1,0 +1,27 @@
+{
+  "name": "preview-generator",
+  "version": "1.0.0",
+  "description": "Companion tool to generate preview videos for epub novels",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "generate": "tsx src/index.ts",
+    "update-db": "tsx src/update-db.ts",
+    "run-migration": "tsx src/run-migration.ts",
+    "get-tokens": "tsx src/get-tokens.ts",
+    "upload-youtube": "tsx src/upload-youtube.ts"
+  },
+  "dependencies": {
+    "@andresaya/edge-tts": "^1.8.0",
+    "@google/generative-ai": "^0.21.0",
+    "@libsql/client": "^0.17.3",
+    "dotenv": "^17.4.2",
+    "googleapis": "^172.0.0",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  }
+}
