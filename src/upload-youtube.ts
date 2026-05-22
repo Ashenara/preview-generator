@@ -74,7 +74,10 @@ async function main() {
   const book = queryResult.rows[0];
   const title = (book.title as string) || "Unknown Novel";
   const author = (book.author as string) || "Unknown Author";
-  const description = (book.description as string) || "";
+  let description = (book.description as string) || "";
+  
+  // Clean description: strip HTML tags and remove any leftover < or > characters which YouTube rejects
+  description = description.replace(/<[^>]*>/g, "").replace(/[<>]/g, "");
 
   // Prepare video metadata
   let videoTitle = `${title} - Novel Preview Trailer`;
@@ -84,7 +87,12 @@ async function main() {
 
   const bookSlug = generateBookSlug(bookId, title);
   const readUrl = `https://novels.ashenara.com/books/${bookId}/${bookSlug}`;
-  const videoDescription = `${videoTitle}\n\nAuthor: ${author}\n\nRead the novel here: ${readUrl}\n\nDescription:\n${description}\n\nGenerated automatically by Ashenara Preview Generator.`;
+  let videoDescription = `${videoTitle}\n\nAuthor: ${author}\n\nRead the novel here: ${readUrl}\n\nDescription:\n${description}\n\nGenerated automatically by Ashenara Preview Generator.`;
+  
+  // Truncate to avoid exceeding YouTube's 5000 character limit
+  if (videoDescription.length > 4900) {
+    videoDescription = videoDescription.slice(0, 4890) + "...";
+  }
 
   console.log(`\n📺 Video Title: "${videoTitle}"`);
   console.log(`🔒 Privacy Status: ${privacyStatus}`);
