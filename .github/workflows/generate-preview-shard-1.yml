@@ -1,31 +1,21 @@
-name: Generate Novel Previews (Batch & Sharded)
+name: Generate Previews (Shard 1)
 
 on:
   schedule:
-    # Run once daily at 1:00 AM UTC (10:00 AM JST/KST)
-    # This allows it to run when the YouTube API daily quota resets
-    - cron: '0 1 * * *'
+    # Run every 20 minutes (at minutes 10, 30, 50 of every hour)
+    # Staggered by 10 minutes from Shard 0 to ensure they never run or upload concurrently!
+    - cron: '10,30,50 * * * *'
   workflow_dispatch:
     inputs:
-      limit:
-        description: 'Max books to process per shard/runner (0 for unlimited)'
-        required: false
-        type: string
-        default: '0'
       useFlux:
-        description: 'Use High-Quality Flux model (slower) instead of Fast Turbo model'
+        description: 'Use High-Quality Flux model instead of Fast Turbo model'
         required: false
         type: boolean
         default: false
 
 jobs:
-  batch-run:
+  run-shard-1:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # Spawns 3 parallel runners
-        shard: [0, 1, 2]
-      fail-fast: false # Let other shards finish their current work even if one hits the quota limit and exits with an error
 
     steps:
       - name: Checkout Code
@@ -57,20 +47,13 @@ jobs:
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
         working-directory: ./
 
-      - name: Run Batch Generator
+      - name: Run Shard 1 Batch (Limit 1)
         run: |
-          # Use user inputs or fallback to defaults for cron schedules
-          LIMIT_VAL="${{ github.event.inputs.limit }}"
-          if [ -z "$LIMIT_VAL" ]; then
-            LIMIT_VAL="0"
-          fi
-          
           FLUX_FLAG=""
           if [ "${{ github.event.inputs.useFlux }}" = "true" ]; then
             FLUX_FLAG="--flux"
           fi
-          
-          pnpm run batch-generate --shard ${{ matrix.shard }} --total-shards 3 --limit $LIMIT_VAL --privacy public $FLUX_FLAG
+          pnpm run batch-generate --shard 1 --total-shards 2 --limit 1 --privacy public $FLUX_FLAG
         working-directory: ./
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}

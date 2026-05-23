@@ -96,13 +96,6 @@ async function main() {
       const videoPath = await generateBookPreview(bookId, useFlux);
       console.log(`✅ Video compiled successfully: ${videoPath}`);
 
-      // Staggered delay before YouTube upload to avoid concurrent upload rate limits
-      const uploadDelaySeconds = shard * 120; // 2 minutes (120 seconds) per shard
-      if (uploadDelaySeconds > 0) {
-        console.log(`⏰ Staggering upload: waiting for ${uploadDelaySeconds} seconds (2 mins per shard)...`);
-        await new Promise((resolve) => setTimeout(resolve, uploadDelaySeconds * 1000));
-      }
-
       // 2. Upload the video
       const videoId = await uploadBookVideo(bookId, privacyStatus);
       console.log(`🎉 Video uploaded successfully! YouTube ID: ${videoId}`);
