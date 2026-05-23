@@ -57,34 +57,61 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
 
   const credsList: YoutubeCreds[] = [];
 
-  // Set 1 (Default)
-  if (process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET && process.env.YOUTUBE_REFRESH_TOKEN) {
-    credsList.push({
-      clientId: process.env.YOUTUBE_CLIENT_ID,
-      clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
-      refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
-      index: 1,
-    });
+  // 1. Load from YOUTUBE_CREDS_JSON if defined
+  if (process.env.YOUTUBE_CREDS_JSON) {
+    try {
+      const parsed = JSON.parse(process.env.YOUTUBE_CREDS_JSON);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of list) {
+        if (item.clientId && item.clientSecret && item.refreshToken) {
+          credsList.push({
+            clientId: item.clientId.trim(),
+            clientSecret: item.clientSecret.trim(),
+            refreshToken: item.refreshToken.trim(),
+            index: credsList.length + 1,
+          });
+        }
+      }
+      console.log(`📡 Loaded ${credsList.length} YouTube credential sets from YOUTUBE_CREDS_JSON.`);
+    } catch (err: any) {
+      console.warn("⚠️ Failed to parse YOUTUBE_CREDS_JSON environment variable:", err.message);
+    }
   }
 
-  // Set 2
-  if (process.env.YOUTUBE_CLIENT_ID_2 && process.env.YOUTUBE_CLIENT_SECRET_2 && process.env.YOUTUBE_REFRESH_TOKEN_2) {
-    credsList.push({
-      clientId: process.env.YOUTUBE_CLIENT_ID_2,
-      clientSecret: process.env.YOUTUBE_CLIENT_SECRET_2,
-      refreshToken: process.env.YOUTUBE_REFRESH_TOKEN_2,
-      index: 2,
-    });
+  // 2. Load primary credentials (if not already loaded via JSON)
+  const primaryId = process.env.YOUTUBE_CLIENT_ID;
+  const primarySecret = process.env.YOUTUBE_CLIENT_SECRET;
+  const primaryRefresh = process.env.YOUTUBE_REFRESH_TOKEN;
+  
+  if (primaryId && primarySecret && primaryRefresh) {
+    const isDuplicate = credsList.some(c => c.clientId === primaryId.trim());
+    if (!isDuplicate) {
+      credsList.push({
+        clientId: primaryId.trim(),
+        clientSecret: primarySecret.trim(),
+        refreshToken: primaryRefresh.trim(),
+        index: credsList.length + 1,
+      });
+    }
   }
 
-  // Set 3
-  if (process.env.YOUTUBE_CLIENT_ID_3 && process.env.YOUTUBE_CLIENT_SECRET_3 && process.env.YOUTUBE_REFRESH_TOKEN_3) {
-    credsList.push({
-      clientId: process.env.YOUTUBE_CLIENT_ID_3,
-      clientSecret: process.env.YOUTUBE_CLIENT_SECRET_3,
-      refreshToken: process.env.YOUTUBE_REFRESH_TOKEN_3,
-      index: 3,
-    });
+  // 3. Dynamically scan for individual env credentials YOUTUBE_CLIENT_ID_N (from N=2 to 30)
+  for (let i = 2; i <= 30; i++) {
+    const cid = process.env[`YOUTUBE_CLIENT_ID_${i}`];
+    const csec = process.env[`YOUTUBE_CLIENT_SECRET_${i}`];
+    const cref = process.env[`YOUTUBE_REFRESH_TOKEN_${i}`];
+
+    if (cid && csec && cref) {
+      const isDuplicate = credsList.some(c => c.clientId === cid.trim());
+      if (!isDuplicate) {
+        credsList.push({
+          clientId: cid.trim(),
+          clientSecret: csec.trim(),
+          refreshToken: cref.trim(),
+          index: credsList.length + 1,
+        });
+      }
+    }
   }
 
   if (credsList.length === 0) {
@@ -136,6 +163,7 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
   
   const fileSize = fs.statSync(outputVideoPath).size;
   let lastError: any = null;
+  let hasQuotaError = false;
 
   for (const creds of credsList) {
     console.log(`📡 Attempting upload using YouTube credentials set #${creds.index}...`);
@@ -205,17 +233,35 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
       lastError = error;
 
       if (isQuotaError(error)) {
-        console.log(`🛑 Quota exceeded for credentials set #${creds.index}. Trying next set if available...`);
-        continue;
+        hasQuotaError = true;
+        console.log(`🛑 Quota exceeded for credentials set #${creds.index}.`);
       }
       
-      // If it's a non-quota error, throw it immediately (e.g. video compilation error or invalid file)
-      throw error;
+      console.log("📡 Attempting fallback to next credentials set...");
     }
   }
 
   // If all credentials failed
-  throw lastError || new Error("All configured YouTube API credentials failed.");
+  const finalError = lastError || new Error("All configured YouTube API credentials failed.");
+
+  if (hasQuotaError) {
+    console.error("🛑 All attempted credentials failed, and at least one failure was due to YouTube API Quota limit.");
+    try {
+      console.log("🔋 Recording YouTube quota exhaustion state in Turso database site_settings...");
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      
+      // Upsert into site_settings (LibSQL/Turso supports INSERT OR REPLACE)
+      await dbClient.execute({
+        sql: "INSERT OR REPLACE INTO site_settings (key, value, updatedAt) VALUES ('youtube_quota_exceeded', ?, ?)",
+        args: ["true", nowEpoch],
+      });
+      console.log("✅ Quota state successfully recorded in database.");
+    } catch (dbErr: any) {
+      console.warn(`⚠️ Failed to record quota state in DB: ${dbErr.message || dbErr}`);
+    }
+  }
+
+  throw finalError;
 }
 
 async function main() {

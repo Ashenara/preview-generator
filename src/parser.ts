@@ -43,9 +43,9 @@ export async function extractEpubText(fileSource: string): Promise<string> {
     // Local path
     let localPath = fileSource;
     if (fileSource.startsWith("/uploads/")) {
-      localPath = path.resolve(process.cwd(), "../public", fileSource.substring(1));
+      localPath = path.resolve(process.cwd(), "public", fileSource.substring(1));
     } else {
-      localPath = path.resolve(process.cwd(), "../", fileSource);
+      localPath = path.resolve(process.cwd(), fileSource);
     }
     console.log(`📂 Reading local EPUB: ${localPath}`);
     if (!fs.existsSync(localPath)) {

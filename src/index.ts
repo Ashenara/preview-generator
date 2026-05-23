@@ -30,6 +30,15 @@ function stringToSeed(str: string): number {
   return Math.abs(hash) % 1000000;
 }
 
+// Helper to generate slug for URL
+function generateBookSlug(id: number, title?: string | null): string {
+  if (!title) return "novel";
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '');
+}
+
 export async function generateBookPreview(bookId: number, useFlux: boolean): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
@@ -141,6 +150,43 @@ export async function generateBookPreview(bookId: number, useFlux: boolean): Pro
   
   await compileVideo(compiledSlides, outputVideoPath, tempDir);
   console.log(`🎉 Video successfully compiled at: ${outputVideoPath}`);
+  
+  // Write YouTube metadata file for easy manual copy-pasting
+  const metaFilePath = path.join(outputDir, `${bookId}-youtube-meta.txt`);
+  const cleanDescription = description.replace(/<[^>]*>/g, "").replace(/[<>]/g, "");
+  let videoTitle = `${title} - Novel Preview Trailer`;
+  if (videoTitle.length > 95) {
+    videoTitle = videoTitle.slice(0, 92) + "...";
+  }
+  const bookSlug = generateBookSlug(bookId, title);
+  const readUrl = `https://novels.ashenara.com/books/${bookId}/${bookSlug}`;
+  let videoDescription = `${videoTitle}\n\nAuthor: ${author}\n\nRead the novel here: ${readUrl}\n\nDescription:\n${cleanDescription}\n\nGenerated automatically by Ashenara Preview Generator.`;
+  if (videoDescription.length > 4900) {
+    videoDescription = videoDescription.slice(0, 4890) + "...";
+  }
+  const tagsList = ["light novel", "web novel", "ashenara", author.toLowerCase(), title.toLowerCase()].join(", ");
+  
+  const metaContent = `==================================================
+YOUTUBE UPLOAD METADATA FOR COPY-PASTE
+==================================================
+
+TITLE:
+${videoTitle}
+
+--------------------------------------------------
+
+DESCRIPTION:
+${videoDescription}
+
+--------------------------------------------------
+
+TAGS:
+${tagsList}
+==================================================
+`;
+
+  fs.writeFileSync(metaFilePath, metaContent, "utf-8");
+  console.log(`💾 YouTube upload metadata saved to: ${metaFilePath}`);
   
   return outputVideoPath;
 }

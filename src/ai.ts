@@ -1,15 +1,14 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
 import * as dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 
 // Removed __dirname for ESM compatibility
-dotenv.config({ path: path.resolve(process.cwd(), "../.env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2;
 if (!apiKey) {
-  console.error("❌ Error: GEMINI_API_KEY is not defined in the parent .env.local");
+  console.error("❌ Error: GEMINI_API_KEY is not defined in .env.local");
   process.exit(1);
 }
 
@@ -27,6 +26,28 @@ export interface Screenplay {
   characterProfile: string;
   slides: ScreenplaySlide[];
 }
+
+const screenplaySchema: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    title: { type: SchemaType.STRING },
+    stylePreset: { type: SchemaType.STRING },
+    characterProfile: { type: SchemaType.STRING },
+    slides: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          slideNumber: { type: SchemaType.INTEGER },
+          narrationText: { type: SchemaType.STRING },
+          visualDescription: { type: SchemaType.STRING },
+        },
+        required: ["slideNumber", "narrationText", "visualDescription"],
+      },
+    },
+  },
+  required: ["title", "stylePreset", "characterProfile", "slides"],
+};
 
 export async function generateScreenplay(
   bookTitle: string,
@@ -92,6 +113,7 @@ ${chaptersText}
         model: modelName,
         generationConfig: {
           responseMimeType: "application/json",
+          responseSchema: screenplaySchema,
         },
       });
 

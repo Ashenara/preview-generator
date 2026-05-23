@@ -55,6 +55,7 @@ jobs:
           pnpm run batch-generate --shard 0 --total-shards 2 --limit 1 --privacy public $FLUX_FLAG
         working-directory: ./
         env:
+          YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDS_JSON }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}

@@ -53,6 +53,38 @@ async function main() {
   console.log(`🔹 Quality Model: ${useFlux ? "FLUX" : "TURBO"}`);
   console.log(`🔹 Upload Privacy: ${privacyStatus}`);
 
+  console.log(`\n🔍 Checking YouTube API quota status in site_settings...`);
+  try {
+    const quotaResult = await dbClient.execute({
+      sql: "SELECT value, updatedAt FROM site_settings WHERE key = 'youtube_quota_exceeded'",
+      args: [],
+    });
+    
+    if (quotaResult.rows.length > 0) {
+      const quotaRow = quotaResult.rows[0];
+      const updatedAt = quotaRow.updatedAt as number; // epoch in seconds
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const diffHours = (nowEpoch - updatedAt) / 3600;
+      
+      if (quotaRow.value === "true" && diffHours < 12) {
+        console.log(`⚠️ YouTube quota is marked as EXCEEDED (last updated ${diffHours.toFixed(1)} hours ago).`);
+        console.log("🛑 Skipping this batch run to avoid spamming the YouTube API. Exiting cleanly.");
+        dbClient.close();
+        process.exit(0);
+      } else {
+        console.log("ℹ️ YouTube quota setting is old or not active. Proceeding and clearing state...");
+        await dbClient.execute({
+          sql: "DELETE FROM site_settings WHERE key = 'youtube_quota_exceeded'",
+          args: [],
+        });
+      }
+    } else {
+      console.log("✅ YouTube quota status is clean.");
+    }
+  } catch (error: any) {
+    console.warn(`⚠️ Failed to check site_settings table: ${error.message || error}. Proceeding anyway...`);
+  }
+
   console.log(`\n🔍 Querying database for novels missing YouTube trailers...`);
   const queryResult = await dbClient.execute({
     sql: "SELECT id, title FROM books WHERE youtubeVideoId IS NULL OR youtubeVideoId = '' ORDER BY id ASC",
@@ -105,6 +137,12 @@ async function main() {
       if (fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
         console.log(`🧹 Cleaned up temporary files in ${tempDir}`);
+      }
+
+      // 4. Clean up compiled output video file to save disk space (meta txt file remains)
+      if (fs.existsSync(videoPath)) {
+        fs.unlinkSync(videoPath);
+        console.log(`🧹 Cleaned up compiled output video file: ${videoPath}`);
       }
 
       processedCount++;

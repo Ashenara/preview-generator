@@ -4,7 +4,6 @@ import { fileURLToPath } from "url";
 import { createClient } from "@libsql/client";
 
 // Removed __dirname for ESM compatibility
-dotenv.config({ path: path.resolve(process.cwd(), "../.env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 const connectionUrl = process.env.TURSO_CONNECTION_URL?.replace(/^libsql:\/\//, "https://");

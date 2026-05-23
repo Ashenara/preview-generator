@@ -5,12 +5,12 @@ import readline from "readline";
 import dotenv from "dotenv";
 
 // Load root environment file if exists
-dotenv.config({ path: "../.env.local" });
+dotenv.config({ path: ".env.local" });
 
 const clientId = process.env.YOUTUBE_CLIENT_ID;
 const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
 
-const PORT = 3000;
+const PORT = 4567;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
 
 async function main() {
