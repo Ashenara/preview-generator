@@ -31,15 +31,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Staggered Start Delay
-        run: |
-          DELAY_MINUTES=$(( ${{ matrix.shard }} * 5 ))
-          if [ $DELAY_MINUTES -gt 0 ]; then
-            echo "⏰ Staggering execution: sleeping for $DELAY_MINUTES minutes..."
-            sleep $(( $DELAY_MINUTES * 60 ))
-          fi
-        shell: bash
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
