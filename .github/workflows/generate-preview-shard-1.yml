@@ -1,10 +1,6 @@
 name: Generate Previews (Shard 1)
 
 on:
-  schedule:
-    # Run every 20 minutes (at minutes 10, 30, 50 of every hour)
-    # Staggered by 10 minutes from Shard 0 to ensure they never run or upload concurrently!
-    - cron: '10,30,50 * * * *'
   workflow_dispatch:
     inputs:
       useFlux:

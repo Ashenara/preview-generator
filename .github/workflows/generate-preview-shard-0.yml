@@ -1,9 +1,6 @@
 name: Generate Previews (Shard 0)
 
 on:
-  schedule:
-    # Run every 20 minutes (at minutes 0, 20, 40 of every hour)
-    - cron: '0,20,40 * * * *'
   workflow_dispatch:
     inputs:
       useFlux:
