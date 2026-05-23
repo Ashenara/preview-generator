@@ -23,40 +23,20 @@ function generateBookSlug(id: number, title?: string | null): string {
     .replace(/(^-|-$)+/g, '');
 }
 
-async function main() {
-  const bookIdStr = getArg("--book") || getArg("-b");
-  const privacyStatus = getArg("--privacy") || getArg("-p") || "public";
-
-  if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run upload-youtube --book <book_id> [--privacy public|unlisted|private]");
-    process.exit(1);
-  }
-
-  const bookId = parseInt(bookIdStr, 10);
-  if (isNaN(bookId)) {
-    console.error(`❌ Error: Invalid Book ID "${bookIdStr}". Must be a number.`);
-    process.exit(1);
-  }
-
+export async function uploadBookVideo(bookId: number, privacyStatus: string): Promise<string> {
   // Load YouTube credentials from environment variables
   const clientId = process.env.YOUTUBE_CLIENT_ID;
   const clientSecret = process.env.YOUTUBE_CLIENT_SECRET;
   const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
-    console.error("❌ Error: YouTube API credentials are missing from your environment variables.");
-    console.error("Please configure YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, and YOUTUBE_REFRESH_TOKEN.");
-    dbClient.close();
-    process.exit(1);
+    throw new Error("YouTube API credentials are missing from your environment variables.");
   }
 
   // Verify that the video file exists
   const outputVideoPath = path.resolve(process.cwd(), "output", `${bookId}-preview.mp4`);
   if (!fs.existsSync(outputVideoPath)) {
-    console.error(`❌ Error: Compiled video file not found at: ${outputVideoPath}`);
-    console.error(`Please run the preview generator first: pnpm run generate --book ${bookId}`);
-    dbClient.close();
-    process.exit(1);
+    throw new Error(`Compiled video file not found at: ${outputVideoPath}`);
   }
 
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
@@ -66,9 +46,7 @@ async function main() {
   });
 
   if (queryResult.rows.length === 0) {
-    console.error(`❌ Error: No book found in the database with ID ${bookId}`);
-    dbClient.close();
-    process.exit(1);
+    throw new Error(`No book found in the database with ID ${bookId}`);
   }
 
   const book = queryResult.rows[0];
@@ -110,67 +88,98 @@ async function main() {
   console.log("⚡ Starting upload stream to YouTube...");
   const fileSize = fs.statSync(outputVideoPath).size;
 
-  try {
-    const response = await youtube.videos.insert(
-      {
-        part: ["snippet", "status"],
-        requestBody: {
-          snippet: {
-            title: videoTitle,
-            description: videoDescription,
-            tags: ["light novel", "web novel", "ashenara", author.toLowerCase(), title.toLowerCase()],
-            categoryId: "22", // People & Blogs
-            defaultLanguage: "en",
-          },
-          status: {
-            privacyStatus: privacyStatus,
-            selfDeclaredMadeForKids: false,
-          },
+  const response = await youtube.videos.insert(
+    {
+      part: ["snippet", "status"],
+      requestBody: {
+        snippet: {
+          title: videoTitle,
+          description: videoDescription,
+          tags: ["light novel", "web novel", "ashenara", author.toLowerCase(), title.toLowerCase()],
+          categoryId: "22", // People & Blogs
+          defaultLanguage: "en",
         },
-        media: {
-          body: fs.createReadStream(outputVideoPath),
+        status: {
+          privacyStatus: privacyStatus,
+          selfDeclaredMadeForKids: false,
         },
       },
-      {
-        onUploadProgress: (evt) => {
-          const progress = ((evt.bytesRead / fileSize) * 100).toFixed(2);
-          process.stdout.write(`   Uploading: ${progress}% (${evt.bytesRead}/${fileSize} bytes)\r`);
-        },
-      }
-    );
-
-    const videoId = response.data.id;
-    if (!videoId) {
-      throw new Error("YouTube API returned empty video ID.");
+      media: {
+        body: fs.createReadStream(outputVideoPath),
+      },
+    },
+    {
+      onUploadProgress: (evt) => {
+        const progress = ((evt.bytesRead / fileSize) * 100).toFixed(2);
+        process.stdout.write(`   Uploading: ${progress}% (${evt.bytesRead}/${fileSize} bytes)\r`);
+      },
     }
+  );
 
-    console.log(`\n✅ YouTube upload complete! Video ID: ${videoId}`);
-    console.log(`🔗 Watch URL: https://youtu.be/${videoId}`);
+  const videoId = response.data.id;
+  if (!videoId) {
+    throw new Error("YouTube API returned empty video ID.");
+  }
 
-    // Update the database
-    console.log(`🔋 Updating Turso database with YouTube Video ID: "${videoId}"...`);
-    const updateResult = await dbClient.execute({
-      sql: "UPDATE books SET youtubeVideoId = ? WHERE id = ?",
-      args: [videoId, bookId],
-    });
+  console.log(`\n✅ YouTube upload complete! Video ID: ${videoId}`);
+  console.log(`🔗 Watch URL: https://youtu.be/${videoId}`);
 
-    if (updateResult.rowsAffected > 0) {
-      console.log(`✅ Database successfully updated for "${title}" (ID: ${bookId}).`);
-    } else {
-      console.warn("⚠️ Warning: Query completed but no rows were updated.");
-    }
+  // Update the database
+  console.log(`🔋 Updating Turso database with YouTube Video ID: "${videoId}"...`);
+  const updateResult = await dbClient.execute({
+    sql: "UPDATE books SET youtubeVideoId = ? WHERE id = ?",
+    args: [videoId, bookId],
+  });
+
+  if (updateResult.rowsAffected > 0) {
+    console.log(`✅ Database successfully updated for "${title}" (ID: ${bookId}).`);
+  } else {
+    console.warn("⚠️ Warning: Query completed but no rows were updated.");
+  }
+
+  return videoId;
+}
+
+async function main() {
+  const bookIdStr = getArg("--book") || getArg("-b");
+  const privacyStatus = getArg("--privacy") || getArg("-p") || "public";
+
+  if (!bookIdStr) {
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run upload-youtube --book <book_id> [--privacy public|unlisted|private]");
+    process.exit(1);
+  }
+
+  const bookId = parseInt(bookIdStr, 10);
+  if (isNaN(bookId)) {
+    console.error(`❌ Error: Invalid Book ID "${bookIdStr}". Must be a number.`);
+    process.exit(1);
+  }
+
+  try {
+    const videoId = await uploadBookVideo(bookId, privacyStatus);
+    console.log(`🎉 Success! Video uploaded and ID "${videoId}" saved to database.`);
   } catch (error: any) {
     console.error("\n❌ Upload failed:", error.message || error);
     if (error.response && error.response.data) {
       console.error("API response details:", JSON.stringify(error.response.data, null, 2));
     }
+    process.exit(1);
   } finally {
     dbClient.close();
   }
 }
 
-main().catch((err) => {
-  console.error("Fatal Error during upload:", err);
-  dbClient.close();
-  process.exit(1);
-});
+const isMain = process.argv[1] && (
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]) ||
+  process.argv[1].endsWith("upload-youtube.ts") ||
+  process.argv[1].endsWith("upload-youtube.js") ||
+  process.argv[1].endsWith("upload-youtube")
+);
+
+if (isMain) {
+  main().catch((err) => {
+    console.error("Fatal Error during upload:", err);
+    dbClient.close();
+    process.exit(1);
+  });
+}

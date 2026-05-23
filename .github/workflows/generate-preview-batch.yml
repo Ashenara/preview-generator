@@ -1,0 +1,78 @@
+name: Generate Novel Previews (Batch & Sharded)
+
+on:
+  schedule:
+    # Run once daily at 1:00 AM UTC (10:00 AM JST/KST)
+    # This allows it to run when the YouTube API daily quota resets
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max books to process per shard/runner (0 for unlimited)'
+        required: false
+        type: string
+        default: '0'
+      useFlux:
+        description: 'Use High-Quality Flux model (slower) instead of Fast Turbo model'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  batch-run:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Spawns 3 parallel runners
+        shard: [0, 1, 2]
+      fail-fast: false # Let other shards finish their current work even if one hits the quota limit and exits with an error
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Dependencies
+        run: |
+          pnpm install
+
+      - name: Create Env File
+        run: |
+          echo "TURSO_CONNECTION_URL=${{ secrets.TURSO_CONNECTION_URL }}" > .env.local
+          echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env.local
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
+        working-directory: ./
+
+      - name: Run Batch Generator
+        run: |
+          # Use user inputs or fallback to defaults for cron schedules
+          LIMIT_VAL="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT_VAL" ]; then
+            LIMIT_VAL="0"
+          fi
+          
+          FLUX_FLAG=""
+          if [ "${{ github.event.inputs.useFlux }}" = "true" ]; then
+            FLUX_FLAG="--flux"
+          fi
+          
+          pnpm run batch-generate --shard ${{ matrix.shard }} --total-shards 3 --limit $LIMIT_VAL --privacy public $FLUX_FLAG
+        working-directory: ./
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}

@@ -9,7 +9,8 @@
     "update-db": "tsx src/update-db.ts",
     "run-migration": "tsx src/run-migration.ts",
     "get-tokens": "tsx src/get-tokens.ts",
-    "upload-youtube": "tsx src/upload-youtube.ts"
+    "upload-youtube": "tsx src/upload-youtube.ts",
+    "batch-generate": "tsx src/batch-generate.ts"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",

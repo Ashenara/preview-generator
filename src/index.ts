@@ -30,22 +30,7 @@ function stringToSeed(str: string): number {
   return Math.abs(hash) % 1000000;
 }
 
-async function main() {
-  const bookIdStr = getArg("--book") || getArg("-b");
-  const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
-
-  if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--flux]");
-    console.error("Example: pnpm run generate --book 12");
-    process.exit(1);
-  }
-
-  const bookId = parseInt(bookIdStr, 10);
-  if (isNaN(bookId)) {
-    console.error(`❌ Error: Invalid Book ID "${bookIdStr}". Must be a number.`);
-    process.exit(1);
-  }
-
+export async function generateBookPreview(bookId: number, useFlux: boolean): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
   const queryResult = await dbClient.execute({
@@ -54,8 +39,7 @@ async function main() {
   });
 
   if (queryResult.rows.length === 0) {
-    console.error(`❌ Error: No book found in the database with ID ${bookId}`);
-    process.exit(1);
+    throw new Error(`No book found in the database with ID ${bookId}`);
   }
 
   const book = queryResult.rows[0];
@@ -65,8 +49,7 @@ async function main() {
   const fileUrl = book.fileUrl as string;
 
   if (!fileUrl) {
-    console.error(`❌ Error: Book "${title}" does not have an EPUB file associated with it (fileUrl is null).`);
-    process.exit(1);
+    throw new Error(`Book "${title}" does not have an EPUB file associated with it (fileUrl is null).`);
   }
 
   console.log(`📖 Title: "${title}" by ${author}`);
@@ -82,13 +65,8 @@ async function main() {
   // Step 1: Parse EPUB text
   console.log("\n--- STEP 1: PARSING EPUB ---");
   let chaptersText = "";
-  try {
-    chaptersText = await extractEpubText(fileUrl);
-    console.log(`✅ Text successfully extracted from EPUB. Length: ${chaptersText.length} characters.`);
-  } catch (error: any) {
-    console.error(`❌ Failed to parse EPUB: ${error.message}`);
-    process.exit(1);
-  }
+  chaptersText = await extractEpubText(fileUrl);
+  console.log(`✅ Text successfully extracted from EPUB. Length: ${chaptersText.length} characters.`);
 
   // Step 2: Call Gemini to write screenplay
   console.log("\n--- STEP 2: GENERATING STORYBOARD WITH GEMINI ---");
@@ -99,14 +77,9 @@ async function main() {
     console.log(`🔄 Found cached screenplay JSON. Reusing: ${screenplayCachePath}`);
     screenplay = JSON.parse(fs.readFileSync(screenplayCachePath, "utf-8"));
   } else {
-    try {
-      screenplay = await generateScreenplay(title, author, description, chaptersText);
-      fs.writeFileSync(screenplayCachePath, JSON.stringify(screenplay, null, 2));
-      console.log(`💾 Screenplay script saved to cache: ${screenplayCachePath}`);
-    } catch (error: any) {
-      console.error(`❌ Failed to generate screenplay: ${error.message}`);
-      process.exit(1);
-    }
+    screenplay = await generateScreenplay(title, author, description, chaptersText);
+    fs.writeFileSync(screenplayCachePath, JSON.stringify(screenplay, null, 2));
+    console.log(`💾 Screenplay script saved to cache: ${screenplayCachePath}`);
   }
 
   // Generate a fixed seed based on book title to keep character looks consistent
@@ -124,33 +97,23 @@ async function main() {
 
     // Download audio if it doesn't exist
     if (!fs.existsSync(audioPath)) {
-      try {
-        await generateVoiceover(slide.narrationText, audioPath);
-        console.log(`   🎤 Slide ${slide.slideNumber}: Audio generated.`);
-      } catch (error: any) {
-        console.error(`   ⚠️ Failed to generate voiceover for slide ${slide.slideNumber}: ${error.message}`);
-        throw error;
-      }
+      await generateVoiceover(slide.narrationText, audioPath);
+      console.log(`   🎤 Slide ${slide.slideNumber}: Audio generated.`);
     } else {
       console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping download.`);
     }
 
     // Download image if it doesn't exist
     if (!fs.existsSync(imagePath)) {
-      try {
-        await generateAndDownloadImage(
-          slide.visualDescription,
-          screenplay.characterProfile,
-          screenplay.stylePreset,
-          bookSeed,
-          imagePath,
-          useFlux
-        );
-        console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
-      } catch (error: any) {
-        console.error(`   ⚠️ Failed to generate image for slide ${slide.slideNumber}: ${error.message}`);
-        throw error;
-      }
+      await generateAndDownloadImage(
+        slide.visualDescription,
+        screenplay.characterProfile,
+        screenplay.stylePreset,
+        bookSeed,
+        imagePath,
+        useFlux
+      );
+      console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
     } else {
       console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping download.`);
     }
@@ -176,33 +139,60 @@ async function main() {
   console.log("\n--- STEP 5: COMPILING PREVIEW VIDEO ---");
   const outputVideoPath = path.join(outputDir, `${bookId}-preview.mp4`);
   
+  await compileVideo(compiledSlides, outputVideoPath, tempDir);
+  console.log(`🎉 Video successfully compiled at: ${outputVideoPath}`);
+  
+  return outputVideoPath;
+}
+
+async function main() {
+  const bookIdStr = getArg("--book") || getArg("-b");
+  const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
+
+  if (!bookIdStr) {
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--flux]");
+    console.error("Example: pnpm run generate --book 12");
+    process.exit(1);
+  }
+
+  const bookId = parseInt(bookIdStr, 10);
+  if (isNaN(bookId)) {
+    console.error(`❌ Error: Invalid Book ID "${bookIdStr}". Must be a number.`);
+    process.exit(1);
+  }
+
   try {
-    await compileVideo(compiledSlides, outputVideoPath, tempDir);
+    const outputVideoPath = await generateBookPreview(bookId, useFlux);
     
     console.log("\n==================================================");
     console.log("🎉 SUCCESS!");
     console.log("==================================================");
     console.log(`📹 Video file created at: ${outputVideoPath}`);
     console.log(`💡 Next Steps:`);
-    console.log(`   1. Upload this video to YouTube (as a Short or standard video).`);
+    console.log(`   1. Upload this video to YouTube.`);
     console.log(`   2. Copy the video ID (e.g., dQw4w9WgXcQ).`);
     console.log(`   3. Update your database using:`);
     console.log(`      pnpm run update-db --book ${bookId} --youtube YOUR_YOUTUBE_ID`);
     console.log("==================================================\n");
   } catch (error: any) {
-    console.error(`❌ Failed to compile video:`, error);
+    console.error(`❌ Failed to compile video:`, error.message || error);
     process.exit(1);
   } finally {
-    // Optionally clean up temp files
-    // fs.rmSync(tempDir, { recursive: true, force: true });
+    dbClient.close();
   }
-
-  // Close Turso db client before exiting
-  dbClient.close();
 }
 
-main().catch((err) => {
-  console.error("Fatal Error:", err);
-  dbClient.close();
-  process.exit(1);
-});
+const isMain = process.argv[1] && (
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1]) ||
+  process.argv[1].endsWith("index.ts") ||
+  process.argv[1].endsWith("index.js") ||
+  process.argv[1].endsWith("index")
+);
+
+if (isMain) {
+  main().catch((err) => {
+    console.error("Fatal Error:", err);
+    dbClient.close();
+    process.exit(1);
+  });
+}
