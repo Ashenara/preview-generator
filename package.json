@@ -10,11 +10,18 @@
     "run-migration": "tsx src/run-migration.ts",
     "get-tokens": "tsx src/get-tokens.ts",
     "upload-youtube": "tsx src/upload-youtube.ts",
-    "batch-generate": "tsx src/batch-generate.ts"
+    "batch-generate": "tsx src/batch-generate.ts",
+    "test-hf": "tsx src/test-huggingface.ts",
+    "inspect-gradio": "tsx src/inspect-gradio.ts",
+    "extract-endpoints": "tsx src/extract-endpoints.ts",
+    "test-gradio-video": "tsx src/test-gradio-video.ts",
+    "read-component": "tsx src/read-component.ts",
+    "test-token": "tsx src/test-token.ts"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
     "@google/generative-ai": "^0.21.0",
+    "@gradio/client": "^2.2.0",
     "@libsql/client": "^0.17.3",
     "dotenv": "^17.4.2",
     "googleapis": "^172.0.0",

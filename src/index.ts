@@ -39,7 +39,7 @@ function generateBookSlug(id: number, title?: string | null): string {
     .replace(/(^-|-$)+/g, '');
 }
 
-export async function generateBookPreview(bookId: number, useFlux: boolean): Promise<string> {
+export async function generateBookPreview(bookId: number, useFlux: boolean, useHuggingFace: boolean = false): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
   const queryResult = await dbClient.execute({
@@ -97,7 +97,14 @@ export async function generateBookPreview(bookId: number, useFlux: boolean): Pro
 
   // Step 3 & 4: Download Audio & Images Sequentially
   console.log("\n--- STEP 3 & 4: GENERATING AUDIO AND IMAGES SEQUENTIALLY ---");
-  console.log(`🎨 Image Generation Model: ${useFlux ? "FLUX (High-Quality)" : "TURBO (High-Speed)"}`);
+  
+  let modelDisplayName = "Pollinations TURBO";
+  if (useHuggingFace) {
+    modelDisplayName = "Hugging Face FLUX.1-schnell";
+  } else if (useFlux) {
+    modelDisplayName = "Pollinations FLUX";
+  }
+  console.log(`🎨 Image Generation Model: ${modelDisplayName}`);
   
   const resolvedSlides = [];
   for (const slide of screenplay.slides) {
@@ -120,7 +127,8 @@ export async function generateBookPreview(bookId: number, useFlux: boolean): Pro
         screenplay.stylePreset,
         bookSeed,
         imagePath,
-        useFlux
+        useFlux,
+        useHuggingFace
       );
       console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
     } else {
@@ -194,9 +202,10 @@ ${tagsList}
 async function main() {
   const bookIdStr = getArg("--book") || getArg("-b");
   const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
+  const useHuggingFace = process.argv.includes("--hf") || process.argv.includes("-hf");
 
   if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--flux]");
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--flux] [--hf]");
     console.error("Example: pnpm run generate --book 12");
     process.exit(1);
   }
@@ -208,7 +217,7 @@ async function main() {
   }
 
   try {
-    const outputVideoPath = await generateBookPreview(bookId, useFlux);
+    const outputVideoPath = await generateBookPreview(bookId, useFlux, useHuggingFace);
     
     console.log("\n==================================================");
     console.log("🎉 SUCCESS!");
