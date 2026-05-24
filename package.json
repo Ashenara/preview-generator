@@ -10,7 +10,8 @@
     "run-migration": "tsx src/run-migration.ts",
     "get-tokens": "tsx src/get-tokens.ts",
     "upload-youtube": "tsx src/upload-youtube.ts",
-    "batch-generate": "tsx src/batch-generate.ts"
+    "batch-generate": "tsx src/batch-generate.ts",
+    "generate-flow": "tsx src/generate-flow-prompts.ts"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
