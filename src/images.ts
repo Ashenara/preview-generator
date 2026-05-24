@@ -20,18 +20,33 @@ export async function generateAndDownloadImage(
     fullPrompt
   )}?width=1024&height=576&seed=${seed}&nologo=true&model=${model}`;
 
-  try {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Pollinations.ai returned status ${response.status}: ${response.statusText}`);
-    }
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 40000);
+      
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-    const arrayBuffer = await response.arrayBuffer();
-    fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
-    console.log(`✅ Saved generated image to ${outputPath}`);
-    return outputPath;
-  } catch (error) {
-    console.error("❌ Error downloading image from Pollinations.ai:", error);
-    throw error;
+        if (!response.ok) {
+          throw new Error(`Pollinations.ai returned status ${response.status}: ${response.statusText}`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        fs.writeFileSync(outputPath, Buffer.from(arrayBuffer));
+        console.log(`✅ Saved generated image to ${outputPath}`);
+        return outputPath;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+      }
+    } catch (error) {
+      console.error(`❌ Attempt ${attempt} failed:`, error);
+      if (attempt === maxRetries) throw error;
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
   }
+  throw new Error("Failed to download image after multiple retries.");
 }
