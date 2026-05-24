@@ -39,7 +39,7 @@ function generateBookSlug(id: number, title?: string | null): string {
     .replace(/(^-|-$)+/g, '');
 }
 
-export async function generateBookPreview(bookId: number, useFlux: boolean, useHuggingFace: boolean = false): Promise<string> {
+export async function generateBookPreview(bookId: number, useFlux: boolean, usePollinations: boolean = false): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
   const queryResult = await dbClient.execute({
@@ -98,11 +98,9 @@ export async function generateBookPreview(bookId: number, useFlux: boolean, useH
   // Step 3 & 4: Download Audio & Images Sequentially
   console.log("\n--- STEP 3 & 4: GENERATING AUDIO AND IMAGES SEQUENTIALLY ---");
   
-  let modelDisplayName = "Pollinations TURBO";
-  if (useHuggingFace) {
-    modelDisplayName = "Hugging Face FLUX.1-schnell";
-  } else if (useFlux) {
-    modelDisplayName = "Pollinations FLUX";
+  let modelDisplayName = "Hugging Face FLUX.1-schnell";
+  if (usePollinations) {
+    modelDisplayName = useFlux ? "Pollinations FLUX" : "Pollinations TURBO";
   }
   console.log(`🎨 Image Generation Model: ${modelDisplayName}`);
   
@@ -128,7 +126,7 @@ export async function generateBookPreview(bookId: number, useFlux: boolean, useH
         bookSeed,
         imagePath,
         useFlux,
-        useHuggingFace
+        usePollinations
       );
       console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
     } else {
@@ -202,10 +200,10 @@ ${tagsList}
 async function main() {
   const bookIdStr = getArg("--book") || getArg("-b");
   const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
-  const useHuggingFace = process.argv.includes("--hf") || process.argv.includes("-hf");
+  const usePollinations = process.argv.includes("--pl") || process.argv.includes("--pollinations");
 
   if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--flux] [--hf]");
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--pl] [--flux]");
     console.error("Example: pnpm run generate --book 12");
     process.exit(1);
   }
@@ -217,7 +215,7 @@ async function main() {
   }
 
   try {
-    const outputVideoPath = await generateBookPreview(bookId, useFlux, useHuggingFace);
+    const outputVideoPath = await generateBookPreview(bookId, useFlux, usePollinations);
     
     console.log("\n==================================================");
     console.log("🎉 SUCCESS!");

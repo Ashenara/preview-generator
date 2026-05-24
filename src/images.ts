@@ -12,19 +12,24 @@ export async function generateAndDownloadImage(
   seed: number,
   outputPath: string,
   useFlux: boolean = false,
-  useHuggingFace: boolean = false
+  usePollinations: boolean = false
 ): Promise<string> {
   // Combine visual description, character description, and style preset
   const fullPrompt = `${visualDescription}, protagonist: ${characterProfile}, style: ${stylePreset}`;
   
-  if (useHuggingFace) {
-    const token = process.env.HF_TOKEN || process.env.HF_ACCESS_TOKEN;
-    if (!token) {
-      console.warn("⚠️ HF_TOKEN not found in .env.local. Falling back to Pollinations.ai...");
-      return generateAndDownloadPollinations(fullPrompt, seed, outputPath, useFlux);
-    }
-    return generateAndDownloadHuggingFace(fullPrompt, token, outputPath);
-  } else {
+  if (usePollinations) {
+    return generateAndDownloadPollinations(fullPrompt, seed, outputPath, useFlux);
+  }
+  
+  const token = process.env.HF_TOKEN || process.env.HF_ACCESS_TOKEN;
+  if (!token) {
+    console.warn("⚠️ HF_TOKEN not found in .env.local. Falling back to Pollinations.ai...");
+    return generateAndDownloadPollinations(fullPrompt, seed, outputPath, useFlux);
+  }
+  try {
+    return await generateAndDownloadHuggingFace(fullPrompt, token, outputPath);
+  } catch (error: any) {
+    console.warn(`⚠️ Hugging Face image generation failed: ${error.message || error}. Falling back to Pollinations.ai...`);
     return generateAndDownloadPollinations(fullPrompt, seed, outputPath, useFlux);
   }
 }
