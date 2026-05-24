@@ -65,9 +65,9 @@ async function generateWithFailover(
   actionDesc: string
 ): Promise<string> {
   const modelsToTry = [
+    "gemini-3.5-flash",
     "gemini-2.5-flash",
     "gemini-1.5-flash",
-    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
   ];
@@ -207,7 +207,7 @@ export async function generateFlowPrompts(bookId: number, chaptersArg: string | 
 You are an expert AI prompt engineer and character designer.
 Analyze the following novel details and chapters, and generate:
 1. A "characterProfile": A detailed description of the protagonist's features, clothes, hair, and expression (e.g. "A 16-year-old girl, delicate face, sharp black eyes, a confident and feisty expression, and long dark hair partially tied up in a simple ancient bun"). This will be used to define and create consistent characters in Google Labs Flow.
-2. A consistent visual "style" preset for the book (e.g., "Detailed 3D CGI anime animation style, cinematic 3D animation, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese rustic background").
+2. A consistent visual "style" preset for the book (e.g., "Detailed 2D digital anime illustration, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese rustic background").
 
 Here is the novel info:
 Title: ${title}
