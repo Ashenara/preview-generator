@@ -102,8 +102,9 @@ export async function generateBookPreview(bookId: number): Promise<string> {
   
   const resolvedSlides = [];
   for (const slide of screenplay.slides) {
-    const imagePath = path.join(tempDir, `slide_${slide.slideNumber}.jpg`);
+    let mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.mp4`);
     const audioPath = path.join(tempDir, `slide_${slide.slideNumber}.mp3`);
+    let isVideo = fs.existsSync(mediaPath);
 
     // Download audio if it doesn't exist
     if (!fs.existsSync(audioPath)) {
@@ -113,18 +114,23 @@ export async function generateBookPreview(bookId: number): Promise<string> {
       console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping download.`);
     }
 
-    // Download image if it doesn't exist
-    if (!fs.existsSync(imagePath)) {
-      await generateAndDownloadImage(
-        slide.visualDescription,
-        screenplay.characterProfile,
-        screenplay.stylePreset,
-        bookSeed,
-        imagePath
-      );
-      console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
+    // Resolve media path: use local video clip if found, otherwise use/generate image
+    if (isVideo) {
+      console.log(`   🎬 Slide ${slide.slideNumber}: Detected local MP4 video clip, skipping image generation.`);
     } else {
-      console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping download.`);
+      mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.jpg`);
+      if (!fs.existsSync(mediaPath)) {
+        await generateAndDownloadImage(
+          slide.visualDescription,
+          screenplay.characterProfile,
+          screenplay.stylePreset,
+          bookSeed,
+          mediaPath
+        );
+        console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
+      } else {
+        console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping download.`);
+      }
     }
 
     // Add a short delay to prevent hitting API limits
@@ -132,7 +138,7 @@ export async function generateBookPreview(bookId: number): Promise<string> {
 
     resolvedSlides.push({
       slideNumber: slide.slideNumber,
-      imagePath,
+      imagePath: mediaPath,
       audioPath,
       subtitles: slide.narrationText,
     });

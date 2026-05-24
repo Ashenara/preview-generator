@@ -228,13 +228,29 @@ export async function compileVideo(
       : `1.12-0.12*(in/${totalFrames})`;
 
     // Scale up first to keep zoom smooth, zoom center, and output at 1024x576
-    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1024x576`;
+    const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-100:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
 
-    // FFmpeg drawtext command. Uses default system font or a fallback.
-    // Draws white text centered at the bottom, with a 60% transparent black background box.
-    const drawtextFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-100:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
+    const isVideo = slide.imagePath.toLowerCase().endsWith(".mp4") || 
+                    slide.imagePath.toLowerCase().endsWith(".mov") || 
+                    slide.imagePath.toLowerCase().endsWith(".mkv") || 
+                    slide.imagePath.toLowerCase().endsWith(".webm");
 
-    const cmd = `ffmpeg -y -loop 1 -i "${slide.imagePath}" -i "${slide.audioPath}" -map 0:v -map 1:a -vf "${zoompanFilter},${drawtextFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${clipPath}"`;
+    let cmd = "";
+    if (isVideo) {
+      // For video clips: loop the video, scale to 1024x576, and overlay audio + subtitles
+      const scaleFilter = "scale=1024:576,setsar=1";
+      cmd = `ffmpeg -y -stream_loop -1 -i "${slide.imagePath}" -i "${slide.audioPath}" -map 0:v -map 1:a -vf "${scaleFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${clipPath}"`;
+    } else {
+      // For static images: apply zoompan (Ken-Burns) filter
+      const fps = 25;
+      const totalFrames = Math.ceil(duration * fps);
+      const zoomExpression = i % 2 === 0
+        ? `1.0+0.12*(in/${totalFrames})`
+        : `1.12-0.12*(in/${totalFrames})`;
+      const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1024x576`;
+      
+      cmd = `ffmpeg -y -loop 1 -i "${slide.imagePath}" -i "${slide.audioPath}" -map 0:v -map 1:a -vf "${zoompanFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${clipPath}"`;
+    }
     
     execSync(cmd, { stdio: "ignore" });
   }

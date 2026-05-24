@@ -3,7 +3,7 @@ import path from "path";
 import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
 import * as dotenv from "dotenv";
 import { dbClient } from "./db.js";
-import { extractEpubText } from "./parser.js";
+import { extractAllEpubChapters, EpubChapter } from "./parser.js";
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
@@ -18,15 +18,26 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 interface FlowSlide {
   slideNumber: number;
+  narrationText: string;
   prompt: string;
   style: string;
 }
 
-interface FlowScreenplay {
-  slides: FlowSlide[];
+interface FlowProfile {
+  characterProfile: string;
+  style: string;
 }
 
-const flowSchema: Schema = {
+const profileSchema: Schema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    characterProfile: { type: SchemaType.STRING },
+    style: { type: SchemaType.STRING },
+  },
+  required: ["characterProfile", "style"],
+};
+
+const batchSchema: Schema = {
   type: SchemaType.OBJECT,
   properties: {
     slides: {
@@ -35,10 +46,11 @@ const flowSchema: Schema = {
         type: SchemaType.OBJECT,
         properties: {
           slideNumber: { type: SchemaType.INTEGER },
+          narrationText: { type: SchemaType.STRING },
           prompt: { type: SchemaType.STRING },
           style: { type: SchemaType.STRING },
         },
-        required: ["slideNumber", "prompt", "style"],
+        required: ["slideNumber", "narrationText", "prompt", "style"],
       },
     },
   },
@@ -54,7 +66,45 @@ function getArg(flag: string): string | null {
   return null;
 }
 
-export async function generateFlowPrompts(bookId: number): Promise<string> {
+function parseChapterRange(arg: string | null, totalChapters: number): number[] {
+  if (!arg) {
+    // Default to first 10 chapters
+    console.log("⚠️ Notice: No --chapters specified. Defaulting to chapters 1-10.");
+    const count = Math.min(10, totalChapters);
+    return Array.from({ length: count }, (_, i) => i);
+  }
+
+  if (arg.toLowerCase() === "all") {
+    return Array.from({ length: totalChapters }, (_, i) => i);
+  }
+
+  const indices: Set<number> = new Set();
+  const parts = arg.split(",");
+
+  for (const part of parts) {
+    if (part.includes("-")) {
+      const [startStr, endStr] = part.split("-");
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (!isNaN(start) && !isNaN(end)) {
+        for (let i = start; i <= end; i++) {
+          if (i >= 1 && i <= totalChapters) {
+            indices.add(i - 1);
+          }
+        }
+      }
+    } else {
+      const num = parseInt(part, 10);
+      if (!isNaN(num) && num >= 1 && num <= totalChapters) {
+        indices.add(num - 1);
+      }
+    }
+  }
+
+  return Array.from(indices).sort((a, b) => a - b);
+}
+
+export async function generateFlowPrompts(bookId: number, chaptersArg: string | null): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
   const queryResult = await dbClient.execute({
@@ -79,103 +129,155 @@ export async function generateFlowPrompts(bookId: number): Promise<string> {
   console.log(`📖 Title: "${title}" by ${author}`);
   
   const outputDir = path.resolve(process.cwd(), "output");
+  const tempDir = path.resolve(process.cwd(), "temp", bookId.toString());
+  
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
   // Step 1: Parse EPUB text
-  console.log("\n--- STEP 1: PARSING EPUB ---");
-  const chaptersText = await extractEpubText(fileUrl);
-  console.log(`✅ Text successfully extracted from EPUB. Length: ${chaptersText.length} characters.`);
+  console.log("\n--- STEP 1: PARSING ALL CHAPTERS FROM EPUB ---");
+  const allChapters = await extractAllEpubChapters(fileUrl);
+  console.log(`✅ Extracted ${allChapters.length} chapters.`);
 
-  // Step 2: Call Gemini to write Flow Screenplay
-  console.log("\n--- STEP 2: GENERATING STORYBOARD WITH GEMINI ---");
-  
-  const prompt = `
-You are an expert AI prompt engineer and video director.
-Your task is to analyze the chapters of the novel and generate optimized prompts for Google Labs Flow video generation.
-The video should consist of 10 to 12 slides representing the story's progression.
+  const selectedIndices = parseChapterRange(chaptersArg, allChapters.length);
+  if (selectedIndices.length === 0) {
+    throw new Error("No valid chapters were selected by the range filter.");
+  }
+  console.log(`🎯 Selected ${selectedIndices.length} chapters for generation.`);
 
-For each slide, you must generate:
-1. A "prompt": Describe the action, character pose, background, clothing, hair, and expression. Use a consistent name or descriptor for the protagonist (e.g. "Main_Girl" if the protagonist is female, "Main_Boy" or the actual name like "Jiang Yuan" if male). Integrate details like: "Main_Girl has a confident and feisty expression" or "Jiang Yuan is dressed in elegant silk robes matching his new status." Ensure the protagonist description remains consistent across slides, but updates to fit the scene (e.g. changing wardrobe to fit a modern setting or winter setting).
-2. A "style": The detailed art style description (e.g., "Detailed 2D digital anime illustration, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese background").
+  // Step 2: Resolve Character Profile & Style Preset
+  console.log("\n--- STEP 2: RESOLVING CHARACTER PROFILE & VISUAL STYLE ---");
+  const profileCachePath = path.join(tempDir, "flow_profile.json");
+  let profile: FlowProfile;
 
-Output the result in the following JSON format:
-{
-  "slides": [
-    {
-      "slideNumber": 1,
-      "prompt": "Description of the scene and characters...",
-      "style": "Detailed art style preset..."
+  if (fs.existsSync(profileCachePath)) {
+    console.log(`🔄 Found cached character profile. Reusing: ${profileCachePath}`);
+    profile = JSON.parse(fs.readFileSync(profileCachePath, "utf-8"));
+  } else {
+    console.log("Generating a fresh character profile and visual style from first 3 chapters...");
+    const sampleChapters = allChapters.slice(0, 3);
+    let sampleText = "";
+    for (const ch of sampleChapters) {
+      sampleText += `\n\n--- ${ch.title} ---\n\n${ch.text.substring(0, 3000)}`;
     }
-  ]
-}
+
+    const profilePrompt = `
+You are an expert AI prompt engineer and character designer.
+Analyze the following novel details and chapters, and generate:
+1. A "characterProfile": A detailed description of the protagonist's features, clothes, hair, and expression (e.g. "A 16-year-old girl, delicate face, sharp black eyes, a confident and feisty expression, and long dark hair partially tied up in a simple ancient bun"). This will be used to define and create consistent characters in Google Labs Flow.
+2. A consistent visual "style" preset for the book (e.g., "Detailed 2D digital anime illustration, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese rustic background").
 
 Here is the novel info:
 Title: ${title}
 Author: ${author}
 Description: ${description}
 
-Extracted Chapters Content:
-${chaptersText}
+Sample Chapters Text:
+${sampleText}
 `;
 
-  const modelsToTry = [
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-  ];
+    const model = genAI.getGenerativeModel({
+      model: "gemini-3.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: profileSchema,
+      },
+    });
 
-  let flowScreenplay: FlowScreenplay | null = null;
-  let lastError: any = null;
+    const result = await model.generateContent(profilePrompt);
+    const textResponse = result.response.text();
+    if (!textResponse) {
+      throw new Error("Failed to generate character profile response");
+    }
 
-  for (const modelName of modelsToTry) {
-    console.log(`🤖 Attempting prompt generation with model: ${modelName}...`);
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: flowSchema,
-        },
-      });
+    profile = JSON.parse(textResponse);
+    fs.writeFileSync(profileCachePath, JSON.stringify(profile, null, 2), "utf-8");
+    console.log(`💾 Character profile and style saved to cache: ${profileCachePath}`);
+  }
 
-      const result = await model.generateContent(prompt);
-      const textResponse = result.response.text();
-      if (!textResponse) {
-        throw new Error("Empty response from Gemini API");
-      }
+  console.log(`👤 Protagonist Profile: "${profile.characterProfile}"`);
+  console.log(`🎨 Style Preset: "${profile.style}"`);
 
-      flowScreenplay = JSON.parse(textResponse);
-      console.log(`✅ Screenplay generated successfully using model: ${modelName}!`);
-      break;
-    } catch (error: any) {
-      console.warn(`⚠️ Model "${modelName}" failed: ${error.message || error}`);
-      lastError = error;
+  // Step 3: Generate slides in batches of 10 chapters
+  console.log("\n--- STEP 3: GENERATING STORYBOARD IN BATCHES ---");
+  const batchSize = 10;
+  const allSlides: FlowSlide[] = [];
+
+  for (let i = 0; i < selectedIndices.length; i += batchSize) {
+    const batchIndices = selectedIndices.slice(i, i + batchSize);
+    console.log(`🤖 Generating prompts for batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(selectedIndices.length / batchSize)} (Chapters: ${batchIndices.map(idx => idx + 1).join(", ")})...`);
+
+    let chaptersBatchText = "";
+    for (const idx of batchIndices) {
+      const ch = allChapters[idx];
+      chaptersBatchText += `\n\n--- Chapter ${ch.index + 1}: ${ch.title} ---\n\n${ch.text.substring(0, 2000)}`;
+    }
+
+    const batchPrompt = `
+You are an expert AI prompt engineer and video director.
+We are generating Google Labs Flow prompts and English voiceover subtitles for a series of chapters from the novel "${title}".
+
+Here is the consistent character profile of the protagonist:
+${profile.characterProfile}
+
+Here is the consistent visual style preset:
+${profile.style}
+
+For each of the following chapters, generate exactly 1 slide (Slide Number matching the Chapter Number).
+For each slide/chapter, you must generate:
+1. "slideNumber": The actual chapter number (e.g. 1 for Chapter 1).
+2. "narrationText": A short, highly engaging English voiceover/subtitle line (10-20 words) summarizing the key hook of the chapter. THIS MUST BE WRITTEN IN ENGLISH.
+3. "prompt": Describe the key action/event of the chapter. Describe the character pose, background, clothing, hair, and expression. Use a consistent name/descriptor for the protagonist matching the profile.
+4. "style": The visual style preset to use (exactly: "${profile.style}").
+
+Here are the chapters to process:
+${chaptersBatchText}
+`;
+
+    const model = genAI.getGenerativeModel({
+      model: "gemini-3.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: batchSchema,
+      },
+    });
+
+    const result = await model.generateContent(batchPrompt);
+    const textResponse = result.response.text();
+    if (!textResponse) {
+      throw new Error(`Failed to generate storyboard for batch starting at index ${batchIndices[0]}`);
+    }
+
+    const batchOutput = JSON.parse(textResponse);
+    if (batchOutput.slides && Array.isArray(batchOutput.slides)) {
+      allSlides.push(...batchOutput.slides);
     }
   }
 
-  if (!flowScreenplay) {
-    console.error("❌ All attempted Gemini models failed.");
-    throw lastError;
-  }
+  // Sort slides by chapter number
+  allSlides.sort((a, b) => a.slideNumber - b.slideNumber);
 
-  // Step 3: Format prompts for Google Labs Flow matching user format
-  console.log("\n--- STEP 3: FORMATTING PROMPTS FOR GOOGLE LABS FLOW ---");
+  // Step 4: Write output file
+  console.log("\n--- STEP 4: WRITING FLOW PROMPT SHEET ---");
   
   let outputContent = `Optimized & Corrected Prompts (Ready to Copy-Paste)
 Here is your corrected list of prompts with the conflicts resolved and structured for Google Flow:
+
+CHARACTER PROFILE:
+${profile.characterProfile}
 `;
 
-  flowScreenplay.slides.forEach((slide) => {
+  allSlides.forEach((slide) => {
     outputContent += `
-Slide ${slide.slideNumber}
+Slide ${slide.slideNumber} (Chapter ${slide.slideNumber})
+Voiceover: "${slide.narrationText}"
 Prompt: ${slide.prompt}
 Style: ${slide.style}
 `;
   });
 
-  const outputPath = path.join(outputDir, `${bookId}-flow-prompts.txt`);
+  const rangeStr = chaptersArg ? chaptersArg.replace(/[^a-zA-Z0-9-]/g, "_") : "1-10";
+  const outputPath = path.join(outputDir, `${bookId}-flow-prompts-ch${rangeStr}.txt`);
   fs.writeFileSync(outputPath, outputContent, "utf-8");
   
   console.log(`✅ Flow prompts successfully written to: ${outputPath}`);
@@ -188,10 +290,13 @@ Style: ${slide.style}
 
 async function main() {
   const bookIdStr = getArg("--book") || getArg("-b");
+  const chaptersArg = getArg("--chapters") || getArg("-c");
 
   if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate-flow --book <book_id>");
-    console.error("Example: pnpm run generate-flow --book 1462");
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate-flow --book <book_id> [--chapters <range>]");
+    console.error("Examples:");
+    console.error("  pnpm run generate-flow --book 24 --chapters 1-5");
+    console.error("  pnpm run generate-flow --book 24 --chapters all");
     process.exit(1);
   }
 
@@ -202,7 +307,7 @@ async function main() {
   }
 
   try {
-    await generateFlowPrompts(bookId);
+    await generateFlowPrompts(bookId, chaptersArg);
     console.log("🎉 Flow prompts export complete!");
   } catch (error: any) {
     console.error(`❌ Failed to generate prompts:`, error.message || error);

@@ -158,3 +158,114 @@ export async function extractEpubText(fileSource: string): Promise<string> {
 
   return fullText.trim();
 }
+
+export interface EpubChapter {
+  index: number; // 0-based index
+  title: string;
+  text: string;
+}
+
+export async function extractAllEpubChapters(fileSource: string): Promise<EpubChapter[]> {
+  let buffer: Buffer;
+
+  if (fileSource.startsWith("http://") || fileSource.startsWith("https://")) {
+    console.log(`🌐 Downloading remote EPUB: ${fileSource}`);
+    const response = await fetch(fileSource);
+    if (!response.ok) {
+      throw new Error(`Failed to download EPUB from ${fileSource}. Status: ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    buffer = Buffer.from(arrayBuffer);
+  } else {
+    let localPath = fileSource;
+    if (fileSource.startsWith("/uploads/")) {
+      localPath = path.resolve(process.cwd(), "public", fileSource.substring(1));
+    } else {
+      localPath = path.resolve(process.cwd(), fileSource);
+    }
+    console.log(`📂 Reading local EPUB: ${localPath}`);
+    if (!fs.existsSync(localPath)) {
+      throw new Error(`EPUB file not found at: ${localPath}`);
+    }
+    buffer = fs.readFileSync(localPath);
+  }
+
+  const zip = await JSZip.loadAsync(buffer);
+  const containerXml = await zip.file("META-INF/container.xml")?.async("string");
+  if (!containerXml) {
+    throw new Error("Invalid EPUB: META-INF/container.xml is missing");
+  }
+
+  const fullPathMatch = containerXml.match(/full-path\s*=\s*["']([^"']+)["']/i);
+  if (!fullPathMatch) {
+    throw new Error("Invalid EPUB: full-path attribute missing in container.xml");
+  }
+  const opfPath = fullPathMatch[1];
+  const opfDir = path.dirname(opfPath);
+
+  let opfContent = await zip.file(opfPath)?.async("string");
+  if (!opfContent) {
+    throw new Error(`Invalid EPUB: OPF file not found at ${opfPath}`);
+  }
+
+  opfContent = opfContent.replace(/<(\/)?(?:[a-zA-Z0-9_-]+:)/g, '<$1');
+
+  const manifestItems: Record<string, string> = {};
+  const itemTags = opfContent.match(/<item\s+[^>]+>/g) || [];
+  for (const tag of itemTags) {
+    const idMatch = tag.match(/id\s*=\s*["']([^"']+)["']/i);
+    const hrefMatch = tag.match(/href\s*=\s*["']([^"']+)["']/i);
+    if (idMatch && hrefMatch) {
+      manifestItems[idMatch[1]] = hrefMatch[1];
+    }
+  }
+
+  const spine: string[] = [];
+  const itemrefTags = opfContent.match(/<itemref\s+[^>]+>/g) || [];
+  for (const tag of itemrefTags) {
+    const idrefMatch = tag.match(/idref\s*=\s*["']([^"']+)["']/i);
+    if (idrefMatch && manifestItems[idrefMatch[1]]) {
+      spine.push(manifestItems[idrefMatch[1]]);
+    }
+  }
+
+  console.log(`📚 Total chapters found in spine: ${spine.length}`);
+
+  const chapters: EpubChapter[] = [];
+  for (let idx = 0; idx < spine.length; idx++) {
+    const href = spine[idx];
+    const relativePath = decodeURIComponent(href);
+    const fullZipPath = opfDir === "." || opfDir === "" ? relativePath : path.posix.join(opfDir, relativePath);
+    
+    const file = zip.file(fullZipPath);
+    if (!file) {
+      continue;
+    }
+
+    const html = await file.async("string");
+    
+    // Try to extract chapter title from <h1>, <h2> or <title>
+    let title = `Chapter ${idx + 1}`;
+    const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    if (h1Match) {
+      title = h1Match[1].replace(/<[^>]+>/g, "").trim();
+    } else if (h2Match) {
+      title = h2Match[1].replace(/<[^>]+>/g, "").trim();
+    } else if (titleMatch) {
+      title = titleMatch[1].replace(/<[^>]+>/g, "").trim();
+    }
+    title = title.replace(/\s+/g, " ").trim();
+
+    const cleanText = cleanHtml(html);
+    chapters.push({
+      index: idx,
+      title,
+      text: cleanText,
+    });
+  }
+
+  return chapters;
+}
+
