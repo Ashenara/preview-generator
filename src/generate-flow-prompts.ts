@@ -8,9 +8,10 @@ import { extractAllEpubChapters, EpubChapter } from "./parser.js";
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2;
+const isLocal = !process.env.GITHUB_ACTIONS;
+const apiKey = (isLocal && process.env.GEMINI_API_KEY_2) || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2;
 if (!apiKey) {
-  console.error("❌ Error: GEMINI_API_KEY is not defined in .env.local");
+  console.error("❌ Error: GEMINI_API_KEY or GEMINI_API_KEY_2 is not defined in .env.local");
   process.exit(1);
 }
 
