@@ -293,7 +293,7 @@ ${profile.characterProfile}
   allSlides.forEach((slide) => {
     outputContent += `
 Slide ${slide.slideNumber} (Chapter ${slide.slideNumber})
-Voiceover: "${slide.narrationText}"
+Narrative: "${slide.narrationText}"
 Prompt: ${slide.prompt}
 Style: ${slide.style}
 Subtitle: English
