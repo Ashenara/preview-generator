@@ -57,6 +57,47 @@ const batchSchema: Schema = {
   required: ["slides"],
 };
 
+async function generateWithFailover(
+  genAI: GoogleGenerativeAI,
+  prompt: string,
+  schema: Schema,
+  actionDesc: string
+): Promise<string> {
+  const modelsToTry = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash-lite",
+  ];
+
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    console.log(`🤖 Attempting ${actionDesc} with model: ${modelName}...`);
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+        },
+      });
+
+      const result = await model.generateContent(prompt);
+      const textResponse = result.response.text();
+      if (textResponse) {
+        return textResponse;
+      }
+    } catch (error: any) {
+      console.warn(`⚠️ Model "${modelName}" failed: ${error.message || error}`);
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error(`All models failed to generate ${actionDesc}`);
+}
+
 // Helper to parse arguments
 function getArg(flag: string): string | null {
   const index = process.argv.indexOf(flag);
@@ -165,7 +206,7 @@ export async function generateFlowPrompts(bookId: number, chaptersArg: string | 
 You are an expert AI prompt engineer and character designer.
 Analyze the following novel details and chapters, and generate:
 1. A "characterProfile": A detailed description of the protagonist's features, clothes, hair, and expression (e.g. "A 16-year-old girl, delicate face, sharp black eyes, a confident and feisty expression, and long dark hair partially tied up in a simple ancient bun"). This will be used to define and create consistent characters in Google Labs Flow.
-2. A consistent visual "style" preset for the book (e.g., "Detailed 2D digital anime illustration, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese rustic background").
+2. A consistent visual "style" preset for the book (e.g., "Detailed 3D CGI anime animation style, cinematic 3D animation, web novel cover art style, cinematic composition, dramatic lighting, vibrant colors with rich historical details, ancient Chinese rustic background").
 
 Here is the novel info:
 Title: ${title}
@@ -176,20 +217,7 @@ Sample Chapters Text:
 ${sampleText}
 `;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: profileSchema,
-      },
-    });
-
-    const result = await model.generateContent(profilePrompt);
-    const textResponse = result.response.text();
-    if (!textResponse) {
-      throw new Error("Failed to generate character profile response");
-    }
-
+    const textResponse = await generateWithFailover(genAI, profilePrompt, profileSchema, "character profile");
     profile = JSON.parse(textResponse);
     fs.writeFileSync(profileCachePath, JSON.stringify(profile, null, 2), "utf-8");
     console.log(`💾 Character profile and style saved to cache: ${profileCachePath}`);
@@ -234,21 +262,16 @@ Here are the chapters to process:
 ${chaptersBatchText}
 `;
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: batchSchema,
-      },
-    });
+    const textResponse = await generateWithFailover(genAI, batchPrompt, batchSchema, `batch prompts for index ${batchIndices[0]}`);
 
-    const result = await model.generateContent(batchPrompt);
-    const textResponse = result.response.text();
-    if (!textResponse) {
-      throw new Error(`Failed to generate storyboard for batch starting at index ${batchIndices[0]}`);
+    let batchOutput;
+    try {
+      batchOutput = JSON.parse(textResponse);
+    } catch (parseErr: any) {
+      console.error("❌ JSON parse failed for response:", textResponse);
+      throw new Error(`Failed to parse Gemini response as JSON: ${parseErr.message}`);
     }
 
-    const batchOutput = JSON.parse(textResponse);
     if (batchOutput.slides && Array.isArray(batchOutput.slides)) {
       allSlides.push(...batchOutput.slides);
     }
