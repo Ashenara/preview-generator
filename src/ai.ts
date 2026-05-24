@@ -98,6 +98,7 @@ ${chaptersText}
   // We iterate through available model list to handle load-balancing/keys availability.
   // This matches the Next.js app model routing priority.
   const modelsToTry = [
+    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
