@@ -273,6 +273,7 @@ Slide ${slide.slideNumber} (Chapter ${slide.slideNumber})
 Voiceover: "${slide.narrationText}"
 Prompt: ${slide.prompt}
 Style: ${slide.style}
+Subtitle: English
 `;
   });
 
