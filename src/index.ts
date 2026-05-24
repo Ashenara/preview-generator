@@ -39,7 +39,7 @@ function generateBookSlug(id: number, title?: string | null): string {
     .replace(/(^-|-$)+/g, '');
 }
 
-export async function generateBookPreview(bookId: number, useFlux: boolean, usePollinations: boolean = false): Promise<string> {
+export async function generateBookPreview(bookId: number): Promise<string> {
   console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
   
   const queryResult = await dbClient.execute({
@@ -98,11 +98,7 @@ export async function generateBookPreview(bookId: number, useFlux: boolean, useP
   // Step 3 & 4: Download Audio & Images Sequentially
   console.log("\n--- STEP 3 & 4: GENERATING AUDIO AND IMAGES SEQUENTIALLY ---");
   
-  let modelDisplayName = "Hugging Face FLUX.1-schnell";
-  if (usePollinations) {
-    modelDisplayName = useFlux ? "Pollinations FLUX" : "Pollinations TURBO";
-  }
-  console.log(`🎨 Image Generation Model: ${modelDisplayName}`);
+  console.log(`🎨 Image Generation Model: Pollinations Flux (Free/Unlimited)`);
   
   const resolvedSlides = [];
   for (const slide of screenplay.slides) {
@@ -124,9 +120,7 @@ export async function generateBookPreview(bookId: number, useFlux: boolean, useP
         screenplay.characterProfile,
         screenplay.stylePreset,
         bookSeed,
-        imagePath,
-        useFlux,
-        usePollinations
+        imagePath
       );
       console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
     } else {
@@ -199,11 +193,9 @@ ${tagsList}
 
 async function main() {
   const bookIdStr = getArg("--book") || getArg("-b");
-  const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
-  const usePollinations = process.argv.includes("--pl") || process.argv.includes("--pollinations");
 
   if (!bookIdStr) {
-    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id> [--pl] [--flux]");
+    console.error("❌ Error: Missing Book ID. Usage: pnpm run generate --book <book_id>");
     console.error("Example: pnpm run generate --book 12");
     process.exit(1);
   }
@@ -215,7 +207,7 @@ async function main() {
   }
 
   try {
-    const outputVideoPath = await generateBookPreview(bookId, useFlux, usePollinations);
+    const outputVideoPath = await generateBookPreview(bookId);
     
     console.log("\n==================================================");
     console.log("🎉 SUCCESS!");

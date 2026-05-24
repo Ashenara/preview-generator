@@ -41,8 +41,6 @@ async function main() {
   const totalShardsStr = getArg("--total-shards") || "1";
   const limitStr = getArg("--limit") || "0";
   const privacyStatus = getArg("--privacy") || "public";
-  const useFlux = process.argv.includes("--flux") || process.argv.includes("-f");
-
   const shard = parseInt(shardStr, 10);
   const totalShards = parseInt(totalShardsStr, 10);
   const limit = parseInt(limitStr, 10);
@@ -50,7 +48,7 @@ async function main() {
   console.log(`🤖 Starting Batch Generator...`);
   console.log(`🔹 Shard: ${shard} / Total Shards: ${totalShards}`);
   console.log(`🔹 Batch Limit: ${limit > 0 ? limit : "unlimited"}`);
-  console.log(`🔹 Quality Model: ${useFlux ? "FLUX" : "TURBO"}`);
+  console.log(`🔹 Image Engine: Pollinations Flux (Free/Unlimited)`);
   console.log(`🔹 Upload Privacy: ${privacyStatus}`);
 
   console.log(`\n🔍 Checking YouTube API quota status in site_settings...`);
@@ -125,7 +123,7 @@ async function main() {
 
     try {
       // 1. Generate the video
-      const videoPath = await generateBookPreview(bookId, useFlux);
+      const videoPath = await generateBookPreview(bookId);
       console.log(`✅ Video compiled successfully: ${videoPath}`);
 
       // 2. Upload the video

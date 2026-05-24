@@ -2,12 +2,6 @@ name: Generate Previews (Shard 1)
 
 on:
   workflow_dispatch:
-    inputs:
-      useFlux:
-        description: 'Use High-Quality Flux model instead of Fast Turbo model'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   run-shard-1:
@@ -41,16 +35,11 @@ jobs:
           echo "TURSO_CONNECTION_URL=${{ secrets.TURSO_CONNECTION_URL }}" > .env.local
           echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env.local
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
-          echo "HF_TOKEN=${{ secrets.HF_TOKEN }}" >> .env.local
         working-directory: ./
 
       - name: Run Shard 1 Batch (Limit 1)
         run: |
-          FLUX_FLAG=""
-          if [ "${{ github.event.inputs.useFlux }}" = "true" ]; then
-            FLUX_FLAG="--flux"
-          fi
-          pnpm run batch-generate --shard 1 --total-shards 2 --limit 1 --privacy public $FLUX_FLAG
+          pnpm run batch-generate --shard 1 --total-shards 2 --limit 1 --privacy public
         working-directory: ./
         env:
           YOUTUBE_CREDS_JSON: ${{ secrets.YOUTUBE_CREDS_JSON }}
