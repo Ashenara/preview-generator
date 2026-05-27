@@ -68,7 +68,7 @@ async function main() {
   fs.writeFileSync(subtitlePath, wrappedSubtitles, "utf-8");
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, "/").replace(/:/g, "\\:");
 
-  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=36:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
+  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=42:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
 
   console.log("🎬 Compiling video clip...");
 

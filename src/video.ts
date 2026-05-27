@@ -177,7 +177,7 @@ export async function compileVideo(
       : `1.12-0.12*(in/${totalFrames})`;
 
     // Scale up first to keep zoom smooth, zoom center, and output at 1080p
-    const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=36:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
+    const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=42:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
 
     const isVideo = slide.imagePath.toLowerCase().endsWith(".mp4") || 
                     slide.imagePath.toLowerCase().endsWith(".mov") || 

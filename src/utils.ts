@@ -62,7 +62,7 @@ export function isQuotaError(error: any): boolean {
 /**
  * Wrap text to a maximum number of characters per line for subtitle overlay.
  */
-export function wrapText(text: string, maxCharsPerLine = 40): string {
+export function wrapText(text: string, maxCharsPerLine = 50): string {
   const words = text.split(" ");
   const lines: string[] = [];
   let currentLine = "";
