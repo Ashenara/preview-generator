@@ -95,54 +95,76 @@ export async function generateBookPreview(bookId: number): Promise<string> {
   const bookSeed = stringToSeed(title + bookId);
   console.log(`🌱 Using fixed seed ${bookSeed} for character styling consistency.`);
 
-  // Step 3 & 4: Download Audio & Images Sequentially
-  console.log("\n--- STEP 3 & 4: GENERATING AUDIO AND IMAGES SEQUENTIALLY ---");
+  // Step 3 & 4: Download Audio & Images Concurrently
+  console.log("\n--- STEP 3 & 4: GENERATING AUDIO AND IMAGES CONCURRENTLY ---");
   
   console.log(`🎨 Image Generation Model: Pollinations Flux (Free/Unlimited)`);
   
-  const resolvedSlides = [];
-  for (const slide of screenplay.slides) {
-    let mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.mp4`);
-    const audioPath = path.join(tempDir, `slide_${slide.slideNumber}.mp3`);
-    let isVideo = fs.existsSync(mediaPath);
+  const resolvedSlides: any[] = [];
 
-    // Download audio if it doesn't exist
-    if (!fs.existsSync(audioPath)) {
-      await generateVoiceover(slide.narrationText, audioPath);
-      console.log(`   🎤 Slide ${slide.slideNumber}: Audio generated.`);
-    } else {
-      console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping download.`);
-    }
+  const chunkArray = <T>(arr: T[], size: number): T[][] => {
+    return Array.from({ length: Math.ceil(arr.length / size) }, (v, i) =>
+      arr.slice(i * size, i * size + size)
+    );
+  };
 
-    // Resolve media path: use local video clip if found, otherwise use/generate image
-    if (isVideo) {
-      console.log(`   🎬 Slide ${slide.slideNumber}: Detected local MP4 video clip, skipping image generation.`);
-    } else {
-      mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.jpg`);
-      if (!fs.existsSync(mediaPath)) {
-        await generateAndDownloadImage(
-          slide.visualDescription,
-          screenplay.characterProfile,
-          screenplay.stylePreset,
-          bookSeed,
-          mediaPath
-        );
-        console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
+  const slideChunks = chunkArray(screenplay.slides, 3);
+
+  for (let i = 0; i < slideChunks.length; i++) {
+    const chunk = slideChunks[i];
+    console.log(`\n⏳ Processing chunk ${i + 1}/${slideChunks.length} (${chunk.length} slides concurrently)...`);
+    
+    const chunkPromises = chunk.map(async (slide) => {
+      let mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.mp4`);
+      const audioPath = path.join(tempDir, `slide_${slide.slideNumber}.mp3`);
+      let isVideo = fs.existsSync(mediaPath);
+
+      // Download audio if it doesn't exist
+      if (!fs.existsSync(audioPath)) {
+        await generateVoiceover(slide.narrationText, audioPath);
+        console.log(`   🎤 Slide ${slide.slideNumber}: Audio generated.`);
       } else {
-        console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping download.`);
+        console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping.`);
       }
-    }
 
-    // Add a short delay to prevent hitting API limits
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      // Resolve media path: use local video clip if found, otherwise use/generate image
+      if (isVideo) {
+        console.log(`   🎬 Slide ${slide.slideNumber}: Detected local MP4 video clip, skipping image generation.`);
+      } else {
+        mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.jpg`);
+        if (!fs.existsSync(mediaPath)) {
+          await generateAndDownloadImage(
+            slide.visualDescription,
+            screenplay.characterProfile,
+            screenplay.stylePreset,
+            bookSeed,
+            mediaPath
+          );
+          console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
+        } else {
+          console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping.`);
+        }
+      }
 
-    resolvedSlides.push({
-      slideNumber: slide.slideNumber,
-      imagePath: mediaPath,
-      audioPath,
-      subtitles: slide.narrationText,
+      return {
+        slideNumber: slide.slideNumber,
+        imagePath: mediaPath,
+        audioPath,
+        subtitles: slide.narrationText,
+      };
     });
+
+    const chunkResults = await Promise.all(chunkPromises);
+    resolvedSlides.push(...chunkResults);
+
+    // Optional delay between chunks to prevent aggressive rate limiting across chunks
+    if (i < slideChunks.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
   }
+
+  // Ensure resolvedSlides are sorted by slideNumber just in case Promise.all results are somehow out of sync or chunking reordered it
+  resolvedSlides.sort((a, b) => a.slideNumber - b.slideNumber);
 
   const compiledSlides: VideoSlideInput[] = resolvedSlides.map((s) => ({
     imagePath: s.imagePath,

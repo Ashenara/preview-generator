@@ -55,7 +55,9 @@ async function generateAndDownloadPollinations(
     } catch (error) {
       console.error(`❌ Attempt ${attempt} failed:`, error);
       if (attempt === maxRetries) throw error;
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      const delay = 2000 * Math.pow(2, attempt - 1);
+      console.log(`⏳ Waiting ${delay / 1000} seconds before retrying...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw new Error("Failed to download image from Pollinations.ai after multiple retries.");
