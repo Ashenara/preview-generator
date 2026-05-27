@@ -135,8 +135,8 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
   }
 
   const book = queryResult.rows[0];
-  const title = (book.title as string) || "Unknown Novel";
-  const author = (book.author as string) || "Unknown Author";
+  const title = ((book.title as string) || "Unknown Novel").replace(/[<>]/g, "");
+  const author = ((book.author as string) || "Unknown Author").replace(/[<>]/g, "");
   let description = (book.description as string) || "";
   
   // Clean description: strip HTML tags and remove any leftover < or > characters which YouTube rejects
