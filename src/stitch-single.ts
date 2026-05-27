@@ -129,21 +129,21 @@ async function main() {
   fs.writeFileSync(subtitlePath, wrappedSubtitles, "utf-8");
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, "/").replace(/:/g, "\\:");
 
-  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-100:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
+  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-125:fontsize=30:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
 
   console.log("🎬 Compiling video clip...");
 
   let cmd = "";
   if (videoInput) {
     // For video inputs
-    const scaleFilter = "scale=1024:576,setsar=1";
+    const scaleFilter = "scale=1280:720,setsar=1";
     cmd = `ffmpeg -y -stream_loop -1 -i "${mediaPath}" -i "${finalAudioPath}" -map 0:v -map 1:a -vf "${scaleFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${outputPath}"`;
   } else {
     // For image inputs
     const fps = 25;
     const totalFrames = Math.ceil(duration * fps);
     const zoomExpression = `1.0+0.12*(in/${totalFrames})`;
-    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1024x576`;
+    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720`;
     cmd = `ffmpeg -y -loop 1 -i "${mediaPath}" -i "${finalAudioPath}" -map 0:v -map 1:a -vf "${zoompanFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${outputPath}"`;
   }
 
