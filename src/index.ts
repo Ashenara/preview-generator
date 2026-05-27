@@ -100,8 +100,7 @@ export async function generateBookPreview(bookId: number): Promise<string> {
   
   console.log(`🎨 Image Generation Model: Pollinations Flux (Free/Unlimited)`);
   
-  const resolvedSlides: any[] = [];
-  
+  const resolvedSlides = [];
   for (const slide of screenplay.slides) {
     let mediaPath = path.join(tempDir, `slide_${slide.slideNumber}.mp4`);
     const audioPath = path.join(tempDir, `slide_${slide.slideNumber}.mp3`);
@@ -112,7 +111,7 @@ export async function generateBookPreview(bookId: number): Promise<string> {
       await generateVoiceover(slide.narrationText, audioPath);
       console.log(`   🎤 Slide ${slide.slideNumber}: Audio generated.`);
     } else {
-      console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping.`);
+      console.log(`   🔄 Slide ${slide.slideNumber}: Audio already exists, skipping download.`);
     }
 
     // Resolve media path: use local video clip if found, otherwise use/generate image
@@ -130,12 +129,12 @@ export async function generateBookPreview(bookId: number): Promise<string> {
         );
         console.log(`   🎨 Slide ${slide.slideNumber}: Image generated.`);
       } else {
-        console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping.`);
+        console.log(`   🔄 Slide ${slide.slideNumber}: Image already exists, skipping download.`);
       }
     }
 
-    // Add a short delay (1.5 seconds) to prevent hitting Pollinations API spam filters
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Add a short delay to prevent hitting API limits
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     resolvedSlides.push({
       slideNumber: slide.slideNumber,

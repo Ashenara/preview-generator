@@ -6,17 +6,14 @@ import { fileURLToPath } from "url";
 // Removed __dirname for ESM compatibility
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const geminiKeys: string[] = [];
-if (process.env.GEMINI_API_KEY) geminiKeys.push(process.env.GEMINI_API_KEY);
-for (let i = 2; i <= 30; i++) {
-  const key = process.env[`GEMINI_API_KEY_${i}`];
-  if (key) geminiKeys.push(key);
-}
-
-if (geminiKeys.length === 0) {
-  console.error("❌ Error: GEMINI_API_KEY is not defined in .env.local");
+const isLocal = !process.env.GITHUB_ACTIONS;
+const apiKey = (isLocal && process.env.GEMINI_API_KEY_2) || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2;
+if (!apiKey) {
+  console.error("❌ Error: GEMINI_API_KEY or GEMINI_API_KEY_2 is not defined in .env.local");
   process.exit(1);
 }
+
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export interface ScreenplaySlide {
   slideNumber: number;
@@ -112,50 +109,36 @@ ${chaptersText}
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
-    for (let i = 0; i < geminiKeys.length; i++) {
-      const currentKey = geminiKeys[i];
-      const genAI = new GoogleGenerativeAI(currentKey);
-      console.log(`🤖 Attempting script generation with model: ${modelName} (Key #${i + 1})...`);
-      
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: screenplaySchema,
-          },
-        });
+    console.log(`🤖 Attempting script generation with model: ${modelName}...`);
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: screenplaySchema,
+        },
+      });
 
-        const result = await model.generateContent(prompt);
-        const textResponse = result.response.text();
-        if (!textResponse) {
-          throw new Error("Empty response from Gemini API");
-        }
-
-        const screenplay: Screenplay = JSON.parse(textResponse);
-        console.log(`✅ Screenplay generated successfully using model: ${modelName}!`);
-        console.log(`🎬 Title: "${screenplay.title}"`);
-        console.log(`🎨 Style: "${screenplay.stylePreset}"`);
-        console.log(`👤 Character: "${screenplay.characterProfile}"`);
-        console.log(`📁 Slides Count: ${screenplay.slides.length}`);
-
-        return screenplay;
-      } catch (error: any) {
-        console.warn(`⚠️ Model "${modelName}" failed with Key #${i + 1}: ${error.message || error}`);
-        lastError = error;
-        
-        const errorStr = (error.message || "").toLowerCase();
-        if (error.status === 429 || errorStr.includes('quota') || errorStr.includes('429') || errorStr.includes('rate limit') || errorStr.includes('too many requests')) {
-          // It's a quota issue, try the next key with the same model
-          continue;
-        } else {
-          // Model might not be supported, break to next model
-          break;
-        }
+      const result = await model.generateContent(prompt);
+      const textResponse = result.response.text();
+      if (!textResponse) {
+        throw new Error("Empty response from Gemini API");
       }
+
+      const screenplay: Screenplay = JSON.parse(textResponse);
+      console.log(`✅ Screenplay generated successfully using model: ${modelName}!`);
+      console.log(`🎬 Title: "${screenplay.title}"`);
+      console.log(`🎨 Style: "${screenplay.stylePreset}"`);
+      console.log(`👤 Character: "${screenplay.characterProfile}"`);
+      console.log(`📁 Slides Count: ${screenplay.slides.length}`);
+
+      return screenplay;
+    } catch (error: any) {
+      console.warn(`⚠️ Model "${modelName}" failed: ${error.message || error}`);
+      lastError = error;
     }
   }
 
-  console.error("❌ All attempted Gemini models and keys failed.");
+  console.error("❌ All attempted Gemini models failed.");
   throw lastError;
 }
