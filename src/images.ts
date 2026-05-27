@@ -25,10 +25,10 @@ async function generateAndDownloadPollinations(
   console.log(`🎨 Fetching image from Pollinations.ai (Seed: ${seed}, Model: ${model})...`);
   console.log(`   Prompt: "${fullPrompt.substring(0, 120)}..."`);
 
-  // We use the selected model and widescreen 16:9 aspect ratio (1280x720)
+  // We use the selected model and widescreen 16:9 aspect ratio (1920x1080)
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
     fullPrompt
-  )}?width=1280&height=720&seed=${seed}&nologo=true&model=${model}`;
+  )}?width=1920&height=1080&seed=${seed}&nologo=true&model=${model}`;
 
   const maxRetries = 5;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {

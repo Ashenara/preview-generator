@@ -2,6 +2,7 @@ import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { wrapText, getSystemFontFile } from "./utils.js";
 
 // Removed __dirname for ESM compatibility
 
@@ -13,26 +14,6 @@ function escapeFFmpegText(text: string): string {
     .replace(/"/g, "")
     .replace(/:/g, "\\:")
     .replace(/%/g, "\\%");
-}
-
-// Simple text wrapping for subtitle overlay
-function wrapText(text: string, maxCharsPerLine = 45): string {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    if ((currentLine + " " + word).trim().length > maxCharsPerLine) {
-      lines.push(currentLine.trim());
-      currentLine = word;
-    } else {
-      currentLine = (currentLine + " " + word).trim();
-    }
-  }
-  if (currentLine) {
-    lines.push(currentLine.trim());
-  }
-  return lines.join("\n");
 }
 
 let hasResolvedPath = false;
@@ -102,44 +83,6 @@ function ensureFfmpegPath(): void {
   hasResolvedPath = true;
 }
 
-function getSystemFontFile(): string | null {
-  if (process.platform === "win32") {
-    const winFonts = [
-      "C:/Windows/Fonts/arial.ttf",
-      "C:/Windows/Fonts/msyh.ttc",
-      "C:/Windows/Fonts/segoeui.ttf",
-    ];
-    for (const font of winFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  } else if (process.platform === "darwin") {
-    const macFonts = [
-      "/Library/Fonts/Arial.ttf",
-      "/System/Library/Fonts/Helvetica.ttc",
-      "/Library/Fonts/Microsoft/Arial.ttf",
-    ];
-    for (const font of macFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  } else {
-    const linuxFonts = [
-      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-      "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-      "/usr/share/fonts/fonts-dejavu/DejaVuSans.ttf",
-    ];
-    for (const font of linuxFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  }
-  return null;
-}
-
 // Retrieves audio duration in seconds using ffprobe CLI
 export function getAudioDuration(audioPath: string): number {
   ensureFfmpegPath();
@@ -162,6 +105,12 @@ export interface VideoSlideInput {
   audioPath: string;
   subtitles: string;
 }
+
+// Output resolution — 1080p (1920x1080, 16:9)
+const OUTPUT_WIDTH = 1920;
+const OUTPUT_HEIGHT = 1080;
+// Scale factor applied before zoompan to ensure input is always larger than output.
+const SCALE_FACTOR = 4;
 
 export async function compileVideo(
   slides: VideoSlideInput[],
@@ -198,7 +147,7 @@ export async function compileVideo(
     const fps = 25;
     const totalFrames = introDuration * fps;
     const zoomExpression = `1.0+0.05*(in/${totalFrames})`;
-    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720`;
+    const zoompanFilter = `scale=iw*${SCALE_FACTOR}:ih*${SCALE_FACTOR},zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`;
 
     const cmd = `ffmpeg -y -loop 1 -i "${bannerPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v -map 1:a -vf "${zoompanFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -b:a 192k -t ${introDuration} "${introClipPath}"`;
     execSync(cmd, { stdio: "ignore" });
@@ -227,8 +176,8 @@ export async function compileVideo(
       ? `1.0+0.12*(in/${totalFrames})`
       : `1.12-0.12*(in/${totalFrames})`;
 
-    // Scale up first to keep zoom smooth, zoom center, and output at 1280x720
-    const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-125:fontsize=30:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
+    // Scale up first to keep zoom smooth, zoom center, and output at 1080p
+    const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=36:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
 
     const isVideo = slide.imagePath.toLowerCase().endsWith(".mp4") || 
                     slide.imagePath.toLowerCase().endsWith(".mov") || 
@@ -237,8 +186,8 @@ export async function compileVideo(
 
     let cmd = "";
     if (isVideo) {
-      // For video clips: loop the video, scale to 1280x720, and overlay audio + subtitles
-      const scaleFilter = "scale=1280:720,setsar=1";
+      // For video clips: loop the video, scale to 1920x1080, and overlay audio + subtitles
+      const scaleFilter = `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1`;
       cmd = `ffmpeg -y -stream_loop -1 -i "${slide.imagePath}" -i "${slide.audioPath}" -map 0:v -map 1:a -vf "${scaleFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${clipPath}"`;
     } else {
       // For static images: apply zoompan (Ken-Burns) filter
@@ -247,7 +196,7 @@ export async function compileVideo(
       const zoomExpression = i % 2 === 0
         ? `1.0+0.12*(in/${totalFrames})`
         : `1.12-0.12*(in/${totalFrames})`;
-      const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720`;
+      const zoompanFilter = `scale=iw*${SCALE_FACTOR}:ih*${SCALE_FACTOR},zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`;
       
       cmd = `ffmpeg -y -loop 1 -i "${slide.imagePath}" -i "${slide.audioPath}" -map 0:v -map 1:a -vf "${zoompanFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${clipPath}"`;
     }
@@ -264,7 +213,7 @@ export async function compileVideo(
     const fps = 25;
     const totalFrames = outroDuration * fps;
     const zoomExpression = `1.05-0.05*(in/${totalFrames})`;
-    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720`;
+    const zoompanFilter = `scale=iw*${SCALE_FACTOR}:ih*${SCALE_FACTOR},zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`;
 
     const cmd = `ffmpeg -y -loop 1 -i "${bannerPath}" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -map 0:v -map 1:a -vf "${zoompanFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -b:a 192k -t ${outroDuration} "${outroClipPath}"`;
     execSync(cmd, { stdio: "ignore" });

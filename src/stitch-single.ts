@@ -3,80 +3,14 @@ import path from "path";
 import { execSync } from "child_process";
 import { getAudioDuration } from "./video.js";
 import { generateVoiceover } from "./voice.js";
-
-// Helper to parse arguments
-function getArg(flag: string): string | null {
-  const index = process.argv.indexOf(flag);
-  if (index !== -1 && process.argv[index + 1]) {
-    return process.argv[index + 1];
-  }
-  return null;
-}
-
-// Simple text wrapping for subtitle overlay
-function wrapText(text: string, maxCharsPerLine = 45): string {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    if ((currentLine + " " + word).trim().length > maxCharsPerLine) {
-      lines.push(currentLine.trim());
-      currentLine = word;
-    } else {
-      currentLine = (currentLine + " " + word).trim();
-    }
-  }
-  if (currentLine) {
-    lines.push(currentLine.trim());
-  }
-  return lines.join("\n");
-}
-
-function getSystemFontFile(): string | null {
-  if (process.platform === "win32") {
-    const winFonts = [
-      "C:/Windows/Fonts/arial.ttf",
-      "C:/Windows/Fonts/msyh.ttc",
-      "C:/Windows/Fonts/segoeui.ttf",
-    ];
-    for (const font of winFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  } else if (process.platform === "darwin") {
-    const macFonts = [
-      "/Library/Fonts/Arial.ttf",
-      "/System/Library/Fonts/Helvetica.ttc",
-      "/Library/Fonts/Microsoft/Arial.ttf",
-    ];
-    for (const font of macFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  } else {
-    const linuxFonts = [
-      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-      "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-      "/usr/share/fonts/fonts-dejavu/DejaVuSans.ttf",
-    ];
-    for (const font of linuxFonts) {
-      if (fs.existsSync(font)) {
-        return font;
-      }
-    }
-  }
-  return null;
-}
+import { getArg, wrapText, getSystemFontFile } from "./utils.js";
 
 async function main() {
-  const videoInput = getArg("--video") || getArg("-v");
-  const imageInput = getArg("--image") || getArg("-i");
-  let audioInput = getArg("--audio") || getArg("-a");
-  const textInput = getArg("--text") || getArg("-t");
-  const outputInput = getArg("--output") || getArg("-o") || "output/stitched.mp4";
+  const videoInput = getArg("--video", "-v");
+  const imageInput = getArg("--image", "-i");
+  let audioInput = getArg("--audio", "-a");
+  const textInput = getArg("--text", "-t");
+  const outputInput = getArg("--output", "-o") || "output/stitched.mp4";
 
   if (!videoInput && !imageInput) {
     console.error("❌ Error: You must specify either --video (-v) or --image (-i) input.");
@@ -114,6 +48,11 @@ async function main() {
   const duration = getAudioDuration(finalAudioPath);
   console.log(`⏱️ Audio duration: ${duration.toFixed(2)}s`);
 
+  // Output resolution — 1080p (1920x1080, 16:9)
+  const OUTPUT_WIDTH = 1920;
+  const OUTPUT_HEIGHT = 1080;
+  const SCALE_FACTOR = 4;
+
   // Ensure output directory exists
   const outputPath = path.resolve(outputInput);
   const outputDir = path.dirname(outputPath);
@@ -129,21 +68,21 @@ async function main() {
   fs.writeFileSync(subtitlePath, wrappedSubtitles, "utf-8");
   const escapedSubtitlePath = subtitlePath.replace(/\\/g, "/").replace(/:/g, "\\:");
 
-  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-125:fontsize=30:fontcolor=white:box=1:boxcolor=black@0.6:boxborderw=12:line_spacing=4`;
+  const subtitleFilter = `drawtext=${fontOption}textfile='${escapedSubtitlePath}':x=(w-text_w)/2:y=h-150:fontsize=36:fontcolor=white:borderw=4:bordercolor=black:line_spacing=6`;
 
   console.log("🎬 Compiling video clip...");
 
   let cmd = "";
   if (videoInput) {
     // For video inputs
-    const scaleFilter = "scale=1280:720,setsar=1";
+    const scaleFilter = `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1`;
     cmd = `ffmpeg -y -stream_loop -1 -i "${mediaPath}" -i "${finalAudioPath}" -map 0:v -map 1:a -vf "${scaleFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${outputPath}"`;
   } else {
     // For image inputs
     const fps = 25;
     const totalFrames = Math.ceil(duration * fps);
     const zoomExpression = `1.0+0.12*(in/${totalFrames})`;
-    const zoompanFilter = `scale=iw*2:ih*2,zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=1280x720`;
+    const zoompanFilter = `scale=iw*${SCALE_FACTOR}:ih*${SCALE_FACTOR},zoompan=z='${zoomExpression}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${totalFrames}:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}`;
     cmd = `ffmpeg -y -loop 1 -i "${mediaPath}" -i "${finalAudioPath}" -map 0:v -map 1:a -vf "${zoompanFilter},${subtitleFilter},format=yuv420p" -c:v libx264 -preset ultrafast -c:a aac -ar 44100 -ac 2 -b:a 192k -t ${duration} "${outputPath}"`;
   }
 

@@ -3,49 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { google } from "googleapis";
 import { dbClient } from "./db.js";
-
-// Removed __dirname for ESM compatibility
-
-// Helper to parse arguments
-function getArg(flag: string): string | null {
-  const index = process.argv.indexOf(flag);
-  if (index !== -1 && process.argv[index + 1]) {
-    return process.argv[index + 1];
-  }
-  return null;
-}
-
-function generateBookSlug(id: number, title?: string | null): string {
-  if (!title) return "novel";
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)+/g, '');
-}
-
-function isQuotaError(error: any): boolean {
-  const errMsg = (error.message || "").toLowerCase();
-  if (errMsg.includes("quota") || errMsg.includes("limit") || errMsg.includes("rate limit")) {
-    return true;
-  }
-  if (error.response && error.response.data && error.response.data.error) {
-    const apiErr = error.response.data.error;
-    const apiMsg = (apiErr.message || "").toLowerCase();
-    if (apiMsg.includes("quota") || apiMsg.includes("limit") || apiMsg.includes("rate limit")) {
-      return true;
-    }
-    if (apiErr.errors && Array.isArray(apiErr.errors)) {
-      for (const ent of apiErr.errors) {
-        const reason = (ent.reason || "").toLowerCase();
-        const msg = (ent.message || "").toLowerCase();
-        if (reason.includes("quota") || reason.includes("limit") || msg.includes("quota") || msg.includes("limit")) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
-}
+import { getArg, generateBookSlug, isQuotaError } from "./utils.js";
 
 export async function uploadBookVideo(bookId: number, privacyStatus: string): Promise<string> {
   interface YoutubeCreds {
@@ -186,7 +144,7 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
               title: videoTitle,
               description: videoDescription,
               tags: ["light novel", "web novel", "ashenara", author.toLowerCase(), title.toLowerCase()],
-              categoryId: "22", // People & Blogs
+              categoryId: "1", // Film & Animation
               defaultLanguage: "en",
             },
             status: {
@@ -265,8 +223,8 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
 }
 
 async function main() {
-  const bookIdStr = getArg("--book") || getArg("-b");
-  const privacyStatus = getArg("--privacy") || getArg("-p") || "public";
+  const bookIdStr = getArg("--book", "-b");
+  const privacyStatus = getArg("--privacy", "-p") || "public";
 
   if (!bookIdStr) {
     console.error("❌ Error: Missing Book ID. Usage: pnpm run upload-youtube --book <book_id> [--privacy public|unlisted|private]");
