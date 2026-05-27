@@ -30,11 +30,11 @@ async function generateAndDownloadPollinations(
     fullPrompt
   )}?width=1280&height=720&seed=${seed}&nologo=true&model=${model}`;
 
-  const maxRetries = 3;
+  const maxRetries = 5;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 40000);
+      const timeoutId = setTimeout(() => controller.abort(), 90000);
       
       try {
         const response = await fetch(url, { signal: controller.signal });
