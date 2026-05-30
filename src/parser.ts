@@ -2,6 +2,9 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import JSZip from "jszip";
+import * as dotenv from "dotenv";
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 // Removed __dirname for ESM compatibility
 
@@ -29,23 +32,29 @@ function cleanHtml(html: string): string {
 }
 
 export async function extractEpubText(fileSource: string): Promise<string> {
+  let resolvedSource = fileSource;
+  if (fileSource.startsWith("/api/storage/") || fileSource.startsWith("/uploads/")) {
+    const siteUrl = (process.env.SITE_URL || process.env.NEXTAUTH_URL || "https://novels.ashenara.com").replace(/\/$/, "");
+    resolvedSource = `${siteUrl}${fileSource}`;
+  }
+
   let buffer: Buffer;
 
-  if (fileSource.startsWith("http://") || fileSource.startsWith("https://")) {
-    console.log(`🌐 Downloading remote EPUB: ${fileSource}`);
-    const response = await fetch(fileSource);
+  if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
+    console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
+    const response = await fetch(resolvedSource);
     if (!response.ok) {
-      throw new Error(`Failed to download EPUB from ${fileSource}. Status: ${response.status}`);
+      throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
     }
     const arrayBuffer = await response.arrayBuffer();
     buffer = Buffer.from(arrayBuffer);
   } else {
     // Local path
-    let localPath = fileSource;
-    if (fileSource.startsWith("/uploads/")) {
-      localPath = path.resolve(process.cwd(), "public", fileSource.substring(1));
+    let localPath = resolvedSource;
+    if (resolvedSource.startsWith("/uploads/")) {
+      localPath = path.resolve(process.cwd(), "public", resolvedSource.substring(1));
     } else {
-      localPath = path.resolve(process.cwd(), fileSource);
+      localPath = path.resolve(process.cwd(), resolvedSource);
     }
     console.log(`📂 Reading local EPUB: ${localPath}`);
     if (!fs.existsSync(localPath)) {
@@ -166,22 +175,28 @@ export interface EpubChapter {
 }
 
 export async function extractAllEpubChapters(fileSource: string): Promise<EpubChapter[]> {
+  let resolvedSource = fileSource;
+  if (fileSource.startsWith("/api/storage/") || fileSource.startsWith("/uploads/")) {
+    const siteUrl = (process.env.SITE_URL || process.env.NEXTAUTH_URL || "https://novels.ashenara.com").replace(/\/$/, "");
+    resolvedSource = `${siteUrl}${fileSource}`;
+  }
+
   let buffer: Buffer;
 
-  if (fileSource.startsWith("http://") || fileSource.startsWith("https://")) {
-    console.log(`🌐 Downloading remote EPUB: ${fileSource}`);
-    const response = await fetch(fileSource);
+  if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
+    console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
+    const response = await fetch(resolvedSource);
     if (!response.ok) {
-      throw new Error(`Failed to download EPUB from ${fileSource}. Status: ${response.status}`);
+      throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
     }
     const arrayBuffer = await response.arrayBuffer();
     buffer = Buffer.from(arrayBuffer);
   } else {
-    let localPath = fileSource;
-    if (fileSource.startsWith("/uploads/")) {
-      localPath = path.resolve(process.cwd(), "public", fileSource.substring(1));
+    let localPath = resolvedSource;
+    if (resolvedSource.startsWith("/uploads/")) {
+      localPath = path.resolve(process.cwd(), "public", resolvedSource.substring(1));
     } else {
-      localPath = path.resolve(process.cwd(), fileSource);
+      localPath = path.resolve(process.cwd(), resolvedSource);
     }
     console.log(`📂 Reading local EPUB: ${localPath}`);
     if (!fs.existsSync(localPath)) {
