@@ -161,8 +161,8 @@ export async function extractEpubText(fileSource: string): Promise<string> {
 
     const html = await file.async("string");
     let cleanText = cleanHtml(html);
-    if (cleanText.length > 4000) {
-      cleanText = cleanText.substring(0, 4000) + "\n... [Chapter content truncated to save tokens] ...";
+    if (cleanText.length > 20000) {
+      cleanText = cleanText.substring(0, 20000) + "\n... [Chapter content truncated to save tokens] ...";
     }
     
     fullText += `\n\n--- CHAPTER ${index + 1} ---\n\n${cleanText}`;
