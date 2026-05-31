@@ -1,9 +1,9 @@
-import { GoogleGenerativeAI, SchemaType, Schema } from "@google/generative-ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { generateObject } from "ai";
+import { z } from "zod";
 import * as dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 
-// Removed __dirname for ESM compatibility
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
 const isLocal = !process.env.GITHUB_ACTIONS;
@@ -13,7 +13,9 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+const google = createGoogleGenerativeAI({
+  apiKey,
+});
 
 export interface ScreenplaySlide {
   slideNumber: number;
@@ -28,27 +30,18 @@ export interface Screenplay {
   slides: ScreenplaySlide[];
 }
 
-const screenplaySchema: Schema = {
-  type: SchemaType.OBJECT,
-  properties: {
-    title: { type: SchemaType.STRING },
-    stylePreset: { type: SchemaType.STRING },
-    characterProfile: { type: SchemaType.STRING },
-    slides: {
-      type: SchemaType.ARRAY,
-      items: {
-        type: SchemaType.OBJECT,
-        properties: {
-          slideNumber: { type: SchemaType.INTEGER },
-          narrationText: { type: SchemaType.STRING },
-          visualDescription: { type: SchemaType.STRING },
-        },
-        required: ["slideNumber", "narrationText", "visualDescription"],
-      },
-    },
-  },
-  required: ["title", "stylePreset", "characterProfile", "slides"],
-};
+const screenplaySchema = z.object({
+  title: z.string(),
+  stylePreset: z.string(),
+  characterProfile: z.string(),
+  slides: z.array(
+    z.object({
+      slideNumber: z.number(),
+      narrationText: z.string(),
+      visualDescription: z.string(),
+    })
+  ),
+});
 
 export async function generateScreenplay(
   bookTitle: string,
@@ -119,21 +112,12 @@ ${chaptersText}
   for (const modelName of modelsToTry) {
     console.log(`🤖 Attempting script generation with model: ${modelName}...`);
     try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: screenplaySchema,
-        },
+      const { object: screenplay } = await generateObject({
+        model: google(modelName),
+        schema: screenplaySchema,
+        prompt: prompt,
       });
 
-      const result = await model.generateContent(prompt);
-      const textResponse = result.response.text();
-      if (!textResponse) {
-        throw new Error("Empty response from Gemini API");
-      }
-
-      const screenplay: Screenplay = JSON.parse(textResponse);
       console.log(`✅ Screenplay generated successfully using model: ${modelName}!`);
       console.log(`🎬 Title: "${screenplay.title}"`);
       console.log(`🎨 Style: "${screenplay.stylePreset}"`);
