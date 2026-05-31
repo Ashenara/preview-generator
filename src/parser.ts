@@ -42,7 +42,9 @@ export async function extractEpubText(fileSource: string): Promise<string> {
 
   if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
     console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
-    const response = await fetch(resolvedSource);
+    const response = await fetch(resolvedSource, {
+      headers: { "User-Agent": "AshenaraPreviewBot/1.0" }
+    });
     if (!response.ok) {
       throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
     }
@@ -188,7 +190,9 @@ export async function extractAllEpubChapters(fileSource: string): Promise<EpubCh
 
   if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
     console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
-    const response = await fetch(resolvedSource);
+    const response = await fetch(resolvedSource, {
+      headers: { "User-Agent": "AshenaraPreviewBot/1.0" }
+    });
     if (!response.ok) {
       throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
     }
