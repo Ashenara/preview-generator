@@ -6,16 +6,23 @@ import path from "path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
-const isLocal = !process.env.GITHUB_ACTIONS;
-const apiKey = (isLocal && process.env.GEMINI_API_KEY_2) || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_2;
-if (!apiKey) {
-  console.error("❌ Error: GEMINI_API_KEY or GEMINI_API_KEY_2 is not defined in .env.local");
+// Collect all unique Gemini API keys from environment
+const apiKeys: string[] = [];
+if (process.env.GEMINI_API_KEY) {
+  apiKeys.push(process.env.GEMINI_API_KEY.trim());
+}
+for (let i = 2; i <= 30; i++) {
+  const key = process.env[`GEMINI_API_KEY_${i}`];
+  if (key) {
+    apiKeys.push(key.trim());
+  }
+}
+const uniqueApiKeys = Array.from(new Set(apiKeys));
+
+if (uniqueApiKeys.length === 0) {
+  console.error("❌ Error: GEMINI_API_KEY or other GEMINI_API_KEY_N variables are not defined.");
   process.exit(1);
 }
-
-const google = createGoogleGenerativeAI({
-  apiKey,
-});
 
 export interface ScreenplaySlide {
   slideNumber: number;
@@ -110,24 +117,31 @@ ${chaptersText}
   let lastError: any = null;
 
   for (const modelName of modelsToTry) {
-    console.log(`🤖 Attempting script generation with model: ${modelName}...`);
-    try {
-      const { object: screenplay } = await generateObject({
-        model: google(modelName),
-        schema: screenplaySchema,
-        prompt: prompt,
-      });
+    for (let keyIndex = 0; keyIndex < uniqueApiKeys.length; keyIndex++) {
+      const apiKey = uniqueApiKeys[keyIndex];
+      console.log(`🤖 Attempting script generation with model: ${modelName} (Key #${keyIndex + 1})...`);
+      try {
+        const google = createGoogleGenerativeAI({
+          apiKey,
+        });
 
-      console.log(`✅ Screenplay generated successfully using model: ${modelName}!`);
-      console.log(`🎬 Title: "${screenplay.title}"`);
-      console.log(`🎨 Style: "${screenplay.stylePreset}"`);
-      console.log(`👤 Character: "${screenplay.characterProfile}"`);
-      console.log(`📁 Slides Count: ${screenplay.slides.length}`);
+        const { object: screenplay } = await generateObject({
+          model: google(modelName),
+          schema: screenplaySchema,
+          prompt: prompt,
+        });
 
-      return screenplay;
-    } catch (error: any) {
-      console.warn(`⚠️ Model "${modelName}" failed: ${error.message || error}`);
-      lastError = error;
+        console.log(`✅ Screenplay generated successfully using model: ${modelName} (Key #${keyIndex + 1})!`);
+        console.log(`🎬 Title: "${screenplay.title}"`);
+        console.log(`🎨 Style: "${screenplay.stylePreset}"`);
+        console.log(`👤 Character: "${screenplay.characterProfile}"`);
+        console.log(`📁 Slides Count: ${screenplay.slides.length}`);
+
+        return screenplay;
+      } catch (error: any) {
+        console.warn(`⚠️ Model "${modelName}" with Key #${keyIndex + 1} failed: ${error.message || error}`);
+        lastError = error;
+      }
     }
   }
 
