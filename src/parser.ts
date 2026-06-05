@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import JSZip from "jszip";
 import * as dotenv from "dotenv";
+import { dbClient } from "./db.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 
@@ -31,12 +32,69 @@ function cleanHtml(html: string): string {
   return text.trim();
 }
 
-export async function extractEpubText(fileSource: string): Promise<string> {
-  let resolvedSource = fileSource;
-  if (fileSource.startsWith("/api/storage/") || fileSource.startsWith("/uploads/")) {
+async function resolveFileSource(fileSource: string): Promise<string> {
+  if (fileSource.startsWith("/api/storage/")) {
+    const parts = fileSource.split("/");
+    const bucket = parts[3];
+    const key = parts.slice(4).join("/");
+
+    let publicDomain: string | null = null;
+
+    try {
+      // 1. Fetch active STORAGE_CONFIG from database site_settings
+      const row = await dbClient.execute({
+        sql: "SELECT value FROM site_settings WHERE key = 'STORAGE_CONFIG' LIMIT 1",
+        args: [],
+      });
+
+      if (row.rows.length > 0) {
+        const configVal = row.rows[0].value !== undefined ? row.rows[0].value as string : row.rows[0][0] as string;
+        if (configVal) {
+          const cfg = JSON.parse(configVal);
+
+          const primaryBucket = cfg.bucket || process.env.R2_BUCKET_NAME;
+          const primaryDomain = cfg.publicDomain || process.env.R2_PUBLIC_DOMAIN;
+
+          if (bucket === "default" || bucket === primaryBucket) {
+            publicDomain = primaryDomain;
+          } else if (cfg.buckets && cfg.buckets[bucket]) {
+            publicDomain = cfg.buckets[bucket].publicDomain || primaryDomain;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to load storage configuration from database:", err);
+    }
+
+    // 2. Fallback to environment variables if DB query failed or config was empty
+    if (!publicDomain) {
+      if (bucket === "ashenara-receipt") {
+        publicDomain = process.env.R2_RECEIPT_PUBLIC_DOMAIN || null;
+      } else {
+        publicDomain = process.env.R2_PUBLIC_DOMAIN || null;
+      }
+    }
+
+    // 3. If we resolved a domain, return the direct Cloudflare URL
+    if (publicDomain) {
+      return `${publicDomain.replace(/\/$/, "")}/${key}`;
+    }
+
+    // 4. Otherwise, fallback to the Vercel domain proxy
     const siteUrl = (process.env.SITE_URL || process.env.NEXTAUTH_URL || "https://novels.ashenara.com").replace(/\/$/, "");
-    resolvedSource = `${siteUrl}${fileSource}`;
+    return `${siteUrl}${fileSource}`;
   }
+
+  if (fileSource.startsWith("/uploads/")) {
+    const siteUrl = (process.env.SITE_URL || process.env.NEXTAUTH_URL || "https://novels.ashenara.com").replace(/\/$/, "");
+    return `${siteUrl}${fileSource}`;
+  }
+
+  return fileSource;
+}
+
+export async function extractEpubText(fileSource: string): Promise<string> {
+  const resolvedSource = await resolveFileSource(fileSource);
 
   let buffer: Buffer;
 
@@ -180,11 +238,7 @@ export interface EpubChapter {
 }
 
 export async function extractAllEpubChapters(fileSource: string): Promise<EpubChapter[]> {
-  let resolvedSource = fileSource;
-  if (fileSource.startsWith("/api/storage/") || fileSource.startsWith("/uploads/")) {
-    const siteUrl = (process.env.SITE_URL || process.env.NEXTAUTH_URL || "https://novels.ashenara.com").replace(/\/$/, "");
-    resolvedSource = `${siteUrl}${fileSource}`;
-  }
+  const resolvedSource = await resolveFileSource(fileSource);
 
   let buffer: Buffer;
 
