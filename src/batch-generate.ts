@@ -93,7 +93,7 @@ async function main() {
   console.log(`📚 Found ${allPendingBooks.length} pending novels in total.`);
 
   // Filter books matching this shard: id % totalShards === shard
-  const shardedBooks = allPendingBooks.filter((book) => {
+  const shardedBooks = allPendingBooks.filter((book: any) => {
     const bookId = book.id as number;
     return bookId % totalShards === shard;
   });
@@ -157,7 +157,7 @@ async function main() {
         process.exit(1); // Fail the job to stop the pipeline
       }
 
-      // Check for Turso DB/Connection issues
+      // Check for D1 DB/Connection issues
       if (error.message && error.message.toLowerCase().includes("database")) {
         console.error(`🛑 Database connection issue. Halting execution!`);
         dbClient.close();

@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import JSZip from "jszip";
 import * as dotenv from "dotenv";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { dbClient } from "./db.js";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
@@ -42,12 +43,19 @@ async function resolveFileSource(fileSource: string): Promise<string> {
 
     try {
       // 1. Fetch active STORAGE_CONFIG from database site_settings
-      const row = await dbClient.execute({
+      let row = await dbClient.execute({
         sql: "SELECT value FROM site_settings WHERE key = 'STORAGE_CONFIG' LIMIT 1",
         args: [],
       });
 
-      if (row.rows.length > 0) {
+      if (!row || row.rows.length === 0) {
+        row = await dbClient.execute({
+          sql: "SELECT value FROM site_config WHERE key = 'STORAGE_CONFIG' LIMIT 1",
+          args: [],
+        });
+      }
+
+      if (row && row.rows.length > 0) {
         const configVal = row.rows[0].value !== undefined ? row.rows[0].value as string : row.rows[0][0] as string;
         if (configVal) {
           const cfg = JSON.parse(configVal);
@@ -93,21 +101,89 @@ async function resolveFileSource(fileSource: string): Promise<string> {
   return fileSource;
 }
 
-export async function extractEpubText(fileSource: string): Promise<string> {
+// Helper to download a file from R2 using S3 SDK or standard HTTP fetch fallback
+async function fetchFileBuffer(fileSource: string): Promise<Buffer> {
+  if (fileSource.startsWith("/api/storage/")) {
+    const parts = fileSource.split("/");
+    let bucket = parts[3];
+    const key = parts.slice(4).join("/");
+
+    // Try to get R2 configuration from database site_settings or site_config
+    let cfg: any = null;
+    try {
+      let row = await dbClient.execute({
+        sql: "SELECT value FROM site_settings WHERE key = 'STORAGE_CONFIG' LIMIT 1",
+        args: [],
+      });
+      if (!row || row.rows.length === 0) {
+        row = await dbClient.execute({
+          sql: "SELECT value FROM site_config WHERE key = 'STORAGE_CONFIG' LIMIT 1",
+          args: [],
+        });
+      }
+      if (row && row.rows.length > 0) {
+        const configVal = row.rows[0].value !== undefined ? row.rows[0].value as string : row.rows[0][0] as string;
+        if (configVal) {
+          cfg = JSON.parse(configVal);
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to load storage configuration from database:", err);
+    }
+
+    // Resolve actual bucket name
+    const primaryBucket = cfg?.bucket || process.env.R2_BUCKET_NAME;
+    let actualBucket = bucket;
+    if (bucket === "default") {
+      actualBucket = primaryBucket || "default";
+    }
+
+    // Resolve R2 S3 API credentials
+    const accessKeyId = cfg?.accessKeyId || cfg?.accessKey || cfg?.access_key || cfg?.r2AccessKeyId || process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = cfg?.secretAccessKey || cfg?.secretKey || cfg?.secret_key || cfg?.r2SecretAccessKey || process.env.R2_SECRET_ACCESS_KEY;
+    const endpoint = cfg?.endpoint || cfg?.r2Endpoint || (cfg?.accountId ? `https://${cfg.accountId}.r2.cloudflarestorage.com` : undefined) || process.env.R2_ENDPOINT;
+
+    if (accessKeyId && secretAccessKey && endpoint && actualBucket) {
+      console.log(`🔒 Authenticating directly with Cloudflare R2 bucket "${actualBucket}" to download: ${key}`);
+      try {
+        const s3 = new S3Client({
+          region: "auto",
+          endpoint: endpoint,
+          credentials: {
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+          },
+          forcePathStyle: true,
+        });
+
+        const command = new GetObjectCommand({
+          Bucket: actualBucket,
+          Key: key,
+        });
+
+        const response = await s3.send(command);
+        if (response.Body) {
+          const byteArray = await response.Body.transformToByteArray();
+          return Buffer.from(byteArray);
+        }
+      } catch (s3Err: any) {
+        console.warn(`⚠️ Direct R2 S3 download failed, falling back to HTTP fetch: ${s3Err.message || s3Err}`);
+      }
+    }
+  }
+
+  // Fallback to resolving the source URL and doing standard HTTP fetch
   const resolvedSource = await resolveFileSource(fileSource);
-
-  let buffer: Buffer;
-
   if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
-    console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
+    console.log(`🌐 Downloading remote file: ${resolvedSource}`);
     const response = await fetch(resolvedSource, {
       headers: { "User-Agent": "AshenaraPreviewBot/1.0" }
     });
     if (!response.ok) {
-      throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
+      throw new Error(`Failed to download file from ${resolvedSource}. Status: ${response.status}`);
     }
     const arrayBuffer = await response.arrayBuffer();
-    buffer = Buffer.from(arrayBuffer);
+    return Buffer.from(arrayBuffer);
   } else {
     // Local path
     let localPath = resolvedSource;
@@ -116,12 +192,16 @@ export async function extractEpubText(fileSource: string): Promise<string> {
     } else {
       localPath = path.resolve(process.cwd(), resolvedSource);
     }
-    console.log(`📂 Reading local EPUB: ${localPath}`);
+    console.log(`📂 Reading local file: ${localPath}`);
     if (!fs.existsSync(localPath)) {
-      throw new Error(`EPUB file not found at: ${localPath}`);
+      throw new Error(`File not found at: ${localPath}`);
     }
-    buffer = fs.readFileSync(localPath);
+    return fs.readFileSync(localPath);
   }
+}
+
+export async function extractEpubText(fileSource: string): Promise<string> {
+  const buffer = await fetchFileBuffer(fileSource);
 
   // Load zip content
   const zip = await JSZip.loadAsync(buffer);
@@ -238,33 +318,7 @@ export interface EpubChapter {
 }
 
 export async function extractAllEpubChapters(fileSource: string): Promise<EpubChapter[]> {
-  const resolvedSource = await resolveFileSource(fileSource);
-
-  let buffer: Buffer;
-
-  if (resolvedSource.startsWith("http://") || resolvedSource.startsWith("https://")) {
-    console.log(`🌐 Downloading remote EPUB: ${resolvedSource}`);
-    const response = await fetch(resolvedSource, {
-      headers: { "User-Agent": "AshenaraPreviewBot/1.0" }
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to download EPUB from ${resolvedSource}. Status: ${response.status}`);
-    }
-    const arrayBuffer = await response.arrayBuffer();
-    buffer = Buffer.from(arrayBuffer);
-  } else {
-    let localPath = resolvedSource;
-    if (resolvedSource.startsWith("/uploads/")) {
-      localPath = path.resolve(process.cwd(), "public", resolvedSource.substring(1));
-    } else {
-      localPath = path.resolve(process.cwd(), resolvedSource);
-    }
-    console.log(`📂 Reading local EPUB: ${localPath}`);
-    if (!fs.existsSync(localPath)) {
-      throw new Error(`EPUB file not found at: ${localPath}`);
-    }
-    buffer = fs.readFileSync(localPath);
-  }
+  const buffer = await fetchFileBuffer(fileSource);
 
   const zip = await JSZip.loadAsync(buffer);
   const containerXml = await zip.file("META-INF/container.xml")?.async("string");

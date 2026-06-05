@@ -103,8 +103,8 @@ async function main() {
         throw new Error(`Invalid Book ID "${bookIdStr}". Must be a number.`);
       }
 
-      console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
-      // Import dbClient dynamically so we only connect to Turso if we are actually using it
+      console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Cloudflare D1...`);
+      // Import dbClient dynamically so we only connect to D1 if we are actually using it
       const dbModule = await import("./db.js");
       dbClient = dbModule.dbClient;
 

@@ -82,7 +82,7 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
     throw new Error(`Compiled video file not found at: ${outputVideoPath}`);
   }
 
-  console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
+  console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Cloudflare D1...`);
   const queryResult = await dbClient.execute({
     sql: "SELECT title, author, description FROM books WHERE id = ?",
     args: [bookId],
@@ -173,7 +173,7 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
       console.log(`🔗 Watch URL: https://youtu.be/${videoId}`);
 
       // Update the database
-      console.log(`🔋 Updating Turso database with YouTube Video ID: "${videoId}"...`);
+      console.log(`🔋 Updating Cloudflare D1 database with YouTube Video ID: "${videoId}"...`);
       const updateResult = await dbClient.execute({
         sql: "UPDATE books SET youtubeVideoId = ? WHERE id = ?",
         args: [videoId, bookId],
@@ -205,10 +205,10 @@ export async function uploadBookVideo(bookId: number, privacyStatus: string): Pr
   if (hasQuotaError) {
     console.error("🛑 All attempted credentials failed, and at least one failure was due to YouTube API Quota limit.");
     try {
-      console.log("🔋 Recording YouTube quota exhaustion state in Turso database site_settings...");
+      console.log("🔋 Recording YouTube quota exhaustion state in Cloudflare D1 database site_settings...");
       const nowEpoch = Math.floor(Date.now() / 1000);
       
-      // Upsert into site_settings (LibSQL/Turso supports INSERT OR REPLACE)
+      // Upsert into site_settings (D1 supports INSERT OR REPLACE)
       await dbClient.execute({
         sql: "INSERT OR REPLACE INTO site_settings (key, value, updatedAt) VALUES ('youtube_quota_exceeded', ?, ?)",
         args: ["true", nowEpoch],

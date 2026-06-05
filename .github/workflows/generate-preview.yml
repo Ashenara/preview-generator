@@ -47,8 +47,9 @@ jobs:
 
       - name: Create Env File
         run: |
-          echo "TURSO_CONNECTION_URL=${{ secrets.TURSO_CONNECTION_URL }}" > .env.local
-          echo "TURSO_AUTH_TOKEN=${{ secrets.TURSO_AUTH_TOKEN }}" >> .env.local
+          echo "CLOUDFLARE_ACCOUNT_ID=${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" > .env.local
+          echo "CLOUDFLARE_DATABASE_ID=${{ secrets.CLOUDFLARE_DATABASE_ID }}" >> .env.local
+          echo "CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}" >> .env.local
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.local
           echo "GEMINI_API_KEY_2=${{ secrets.GEMINI_API_KEY_2 }}" >> .env.local
           echo "GEMINI_API_KEY_3=${{ secrets.GEMINI_API_KEY_3 }}" >> .env.local

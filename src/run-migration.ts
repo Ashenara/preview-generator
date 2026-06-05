@@ -1,7 +1,7 @@
 import { dbClient } from "./db.js";
 
 async function main() {
-  console.log("🚀 Starting manual migration run on Turso...");
+  console.log("🚀 Starting manual migration run on Cloudflare D1...");
   
   try {
     console.log("Adding youtubeVideoId column to books table...");

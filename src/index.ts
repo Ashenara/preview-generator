@@ -40,7 +40,7 @@ function generateBookSlug(id: number, title?: string | null): string {
 }
 
 export async function generateBookPreview(bookId: number): Promise<string> {
-  console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Turso...`);
+  console.log(`\n🔍 Fetching book metadata for ID: ${bookId} from Cloudflare D1...`);
   
   const queryResult = await dbClient.execute({
     sql: "SELECT id, title, author, description, fileUrl FROM books WHERE id = ?",

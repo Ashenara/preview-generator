@@ -31,9 +31,10 @@ An independent, automated script utility that generates cinematic book trailer v
 Create a `.env.local` file in the root directory:
 
 ```env
-# LibSQL / Turso Database Connection
-TURSO_CONNECTION_URL="libsql://your-database-name.turso.io"
-TURSO_AUTH_TOKEN="your-turso-auth-token"
+# Cloudflare D1 Database Connection
+CLOUDFLARE_ACCOUNT_ID="your-cloudflare-account-id"
+CLOUDFLARE_DATABASE_ID="your-cloudflare-database-id"
+CLOUDFLARE_API_TOKEN="your-cloudflare-api-token"
 
 # Gemini API Keys (Fallback Rotation)
 GEMINI_API_KEY="your-gemini-api-key-1"
@@ -112,7 +113,7 @@ pnpm run batch-generate --shard 0 --total-shards 2 --limit 1 --privacy public
 - Deletes intermediate compiled videos after upload to conserve runner storage.
 
 ### 6. Database Migrations
-Runs the migration queries to update target tables on Turso:
+Runs the migration queries to update target tables on Cloudflare D1:
 ```bash
 pnpm run run-migration
 ```
