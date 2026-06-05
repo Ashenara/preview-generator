@@ -46,6 +46,7 @@ jobs:
           echo "GEMINI_API_KEY_9=${{ secrets.GEMINI_API_KEY_9 }}" >> .env.local
           echo "R2_PUBLIC_DOMAIN=${{ secrets.R2_PUBLIC_DOMAIN }}" >> .env.local
           echo "R2_RECEIPT_PUBLIC_DOMAIN=${{ secrets.R2_RECEIPT_PUBLIC_DOMAIN }}" >> .env.local
+          echo "POLLINATIONS_API_KEY=${{ secrets.POLLINATIONS_API_KEY }}" >> .env.local
         working-directory: ./
 
       - name: Run Shard 0 Batch (Limit 1)
