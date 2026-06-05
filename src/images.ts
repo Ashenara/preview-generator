@@ -25,10 +25,18 @@ async function generateAndDownloadPollinations(
   console.log(`🎨 Fetching image from Pollinations.ai (Seed: ${seed}, Model: ${model})...`);
   console.log(`   Prompt: "${fullPrompt.substring(0, 120)}..."`);
 
-  // Use the modern gen.pollinations.ai unified endpoint
-  const url = `https://gen.pollinations.ai/image/${encodeURIComponent(
-    fullPrompt
-  )}?width=1920&height=1080&seed=${seed}&nologo=true&model=${model}`;
+  // Select endpoint based on presence of POLLINATIONS_API_KEY
+  let url: string;
+  if (process.env.POLLINATIONS_API_KEY) {
+    url = `https://gen.pollinations.ai/image/${encodeURIComponent(
+      fullPrompt
+    )}?width=1920&height=1080&seed=${seed}&nologo=true&model=${model}`;
+  } else {
+    // Fall back to legacy unauthenticated endpoint for free users
+    url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+      fullPrompt
+    )}?width=1920&height=1080&seed=${seed}&nologo=true&model=${model}`;
+  }
 
   const maxRetries = 5;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
