@@ -133,8 +133,8 @@ export async function generateBookPreview(bookId: number): Promise<string> {
       }
     }
 
-    // Add a short delay to prevent hitting API limits
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    // Add a delay to prevent hitting API rate limits (Cloudflare blocks)
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     resolvedSlides.push({
       slideNumber: slide.slideNumber,
