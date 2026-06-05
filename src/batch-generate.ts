@@ -121,14 +121,17 @@ async function main() {
     console.log(`🚀 [${processedCount + 1}/${shardedBooks.length}] Processing Book ID: ${bookId} - "${title}"`);
     console.log(`==================================================`);
 
+    let videoGenerationSuccess = false;
+    let videoPath = "";
     try {
       // 1. Generate the video
-      const videoPath = await generateBookPreview(bookId);
-      console.log(`✅ Video compiled successfully: ${videoPath}`);
+      videoPath = await generateBookPreview(bookId);
+      console.log(`      videoPath: ${videoPath}`);
+      videoGenerationSuccess = true;
 
       // 2. Upload the video
       const videoId = await uploadBookVideo(bookId, privacyStatus);
-      console.log(`🎉 Video uploaded successfully! YouTube ID: ${videoId}`);
+      console.log(`      videoId: ${videoId}`);
 
       // 3. Clean up temp folder for this book to save disk space on runner
       const tempDir = path.resolve(process.cwd(), "temp", bookId.toString());
@@ -148,6 +151,31 @@ async function main() {
       console.error(`\n❌ Error processing Book ID ${bookId}:`, error.message || error);
       if (error.response && error.response.data) {
         console.error("API details:", JSON.stringify(error.response.data, null, 2));
+      }
+
+      const errorMsg = (error.message || "").toLowerCase();
+
+      // Check for specific critical failure types to fail the build immediately
+      const isPollinationFailed = errorMsg.includes("pollination");
+      const isGeminiFailed = errorMsg.includes("gemini") || errorMsg.includes("api key") || errorMsg.includes("google") || errorMsg.includes("generative");
+      const isYoutubeFailed = videoGenerationSuccess; // If video generation succeeded but upload threw an error, it is a YouTube upload failure
+
+      if (isPollinationFailed) {
+        console.error(`\n🛑 Pollinations.ai image generation failed. Halting execution to fail GitHub Action!`);
+        dbClient.close();
+        process.exit(1);
+      }
+
+      if (isGeminiFailed) {
+        console.error(`\n🛑 Gemini API script generation failed. Halting execution to fail GitHub Action!`);
+        dbClient.close();
+        process.exit(1);
+      }
+
+      if (isYoutubeFailed) {
+        console.error(`\n🛑 YouTube upload failed. Halting execution to fail GitHub Action!`);
+        dbClient.close();
+        process.exit(1);
       }
 
       // Check if this error is a YouTube Quota Limit or critical auth error
