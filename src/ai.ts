@@ -107,10 +107,11 @@ ${chaptersText}
   // We iterate through available model list to handle load-balancing/keys availability.
   // This matches the Next.js app model routing priority.
   const modelsToTry = [
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-pro",
-    "gemini-1.5-flash",
+    "gemini-flash-latest",
+    "gemini-flash-lite-latest",
+    "gemini-pro-latest",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
   ];
 
   let lastError: any = null;
@@ -139,6 +140,9 @@ ${chaptersText}
         return screenplay;
       } catch (error: any) {
         console.warn(`⚠️ Model "${modelName}" with Key #${keyIndex + 1} failed: ${error.message || error}`);
+        if (error.text) {
+          console.warn(`📝 Raw response received from model:\n${error.text}`);
+        }
         lastError = error;
       }
     }
