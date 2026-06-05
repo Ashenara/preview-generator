@@ -25,8 +25,8 @@ async function generateAndDownloadPollinations(
   console.log(`🎨 Fetching image from Pollinations.ai (Seed: ${seed}, Model: ${model})...`);
   console.log(`   Prompt: "${fullPrompt.substring(0, 120)}..."`);
 
-  // We use the selected model and widescreen 16:9 aspect ratio (1920x1080)
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+  // Use the modern gen.pollinations.ai unified endpoint
+  const url = `https://gen.pollinations.ai/image/${encodeURIComponent(
     fullPrompt
   )}?width=1920&height=1080&seed=${seed}&nologo=true&model=${model}`;
 
@@ -36,8 +36,24 @@ async function generateAndDownloadPollinations(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 90000);
       
+      const headers: Record<string, string> = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://pollinations.ai/",
+        "Origin": "https://pollinations.ai/",
+      };
+
+      // Support optional Pollinations API Key if provided
+      if (process.env.POLLINATIONS_API_KEY) {
+        headers["Authorization"] = `Bearer ${process.env.POLLINATIONS_API_KEY.trim()}`;
+      }
+
       try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { 
+          signal: controller.signal,
+          headers
+        });
         clearTimeout(timeoutId);
 
         if (!response.ok) {
