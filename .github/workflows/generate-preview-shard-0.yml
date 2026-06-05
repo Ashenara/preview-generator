@@ -102,3 +102,26 @@ jobs:
           YOUTUBE_CLIENT_ID_16: ${{ secrets.YOUTUBE_CLIENT_ID_16 }}
           YOUTUBE_CLIENT_SECRET_16: ${{ secrets.YOUTUBE_CLIENT_SECRET_16 }}
           YOUTUBE_REFRESH_TOKEN_16: ${{ secrets.YOUTUBE_REFRESH_TOKEN_16 }}
+
+      - name: Notify Discord on Success
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -H "Content-Type: application/json" -X POST -d '{"content": "✅ **Preview Generator Success**: Shard **0** batch run succeeded!\n**Run URL**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' "$DISCORD_WEBHOOK_URL"
+          else
+            echo "Discord Webhook URL not set, skipping notification."
+          fi
+
+      - name: Notify Discord on Failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -H "Content-Type: application/json" -X POST -d '{"content": "❌ **Preview Generator Failure**: Shard **0** batch run failed!\n**Run URL**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' "$DISCORD_WEBHOOK_URL"
+          else
+            echo "Discord Webhook URL not set, skipping notification."
+          fi
+

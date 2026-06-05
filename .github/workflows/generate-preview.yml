@@ -132,3 +132,26 @@ jobs:
             output/${{ github.event.inputs.bookId }}-preview.mp4
             temp/${{ github.event.inputs.bookId }}
           retention-days: 5
+
+      - name: Notify Discord on Success
+        if: success()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -H "Content-Type: application/json" -X POST -d '{"content": "✅ **Preview Generator Success**: Single book generation succeeded!\n**Book ID**: ${{ github.event.inputs.bookId }}\n**Run URL**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' "$DISCORD_WEBHOOK_URL"
+          else
+            echo "Discord Webhook URL not set, skipping notification."
+          fi
+
+      - name: Notify Discord on Failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -H "Content-Type: application/json" -X POST -d '{"content": "❌ **Preview Generator Failure**: Single book generation failed!\n**Book ID**: ${{ github.event.inputs.bookId }}\n**Run URL**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' "$DISCORD_WEBHOOK_URL"
+          else
+            echo "Discord Webhook URL not set, skipping notification."
+          fi
+
